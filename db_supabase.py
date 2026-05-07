@@ -507,53 +507,6 @@ def get_user_by_parent_token(token: str) -> dict | None:
     except Exception:
         return None
 
-async def check_and_expire_subscriptions(bot_app=None):
-    """Periodically check for expired subscriptions and notify users."""
-    try:
-        supabase = _get_supabase()
-        now = datetime.now(timezone.utc)
-        # Find active users with an expiry date in the past
-        resp = supabase.table("users").select("*").eq("subscription_active", True).not_.is_("subscription_expires_at", "null").execute()
-        
-        expired_count = 0
-        for user in resp.data:
-            expiry_str = user.get("subscription_expires_at")
-            if not expiry_str: continue
-            
-            expiry_dt = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
-            if now > expiry_dt:
-                telegram_id = user["telegram_id"]
-                old_tier = user.get("tier", "pro").upper()
-                
-                # Mark inactive but KEEP the tier name for historical record/easy renewal
-                update_user(telegram_id, {
-                    "subscription_active": False,
-                    "subscription_expired_at": _now()
-                })
-                
-                logger.info("Subscription expired for %s (%s).", safe_user_ref(telegram_id), old_tier)
-                expired_count += 1
-                
-                # Notify user if bot_app is provided
-                if bot_app:
-                    try:
-                        lang = user.get("language", "en")
-                        from keyboards import upgrade_keyboard
-                        if lang == "en":
-                            msg = (f"⌛ **Your {old_tier} Subscription has Expired**\n\n"
-                                   f"Your access to premium features has ended. Renew your plan to continue using all tools! 🚀")
-                        else:
-                            msg = (f"⌛ **የ{old_tier} ደንበኝነት ምዝገባዎ አብቅቷል**\n\n"
-                                   f"የፕሪሚየም አገልግሎቶች አጠቃቀምዎ አብቅቷል። አሁኑኑ ያሳድጉ እንዲቀጥሉ። 🚀")
-                        await bot_app.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="Markdown", reply_markup=upgrade_keyboard())
-                    except Exception as e:
-                        logger.error("Failed to notify %s of expiry: %s", safe_user_ref(telegram_id), e)
-        
-        if expired_count > 0:
-            logger.info(f"Processed {expired_count} subscription expirations.")
-    except Exception as e:
-        logger.error(f"Subscription check error: {e}")
-
 def update_streak(telegram_id: int):
     user = get_user(telegram_id)
     if not user: return
@@ -578,12 +531,15 @@ def record_answer(telegram_id: int, subject: str, is_correct: bool, topic: str =
                 "telegram_id": telegram_id,
                 "subject": subject,
                 "topic": topic,
-                "question": question_data.get("question") if question_data else "Unknown",
+                "question": (question_data.get("question") if question_data else "Unknown")[:500],
                 "options": question_data.get("options") if question_data else {},
                 "answer": question_data.get("answer") if question_data else "",
-                "explanation": question_data.get("explanation") if question_data else ""
+                "explanation": (question_data.get("explanation") if question_data else "")[:1000]
             }
-            supabase.table("wrong_questions").insert(data).execute()
+            try:
+                supabase.table("wrong_questions").insert(data).execute()
+            except Exception as e:
+                logger.warning(f"Could not save wrong question (table might not exist): {e}")
         
         # Update user total count (handled in increment_questions usually, but good for safety)
         pass
