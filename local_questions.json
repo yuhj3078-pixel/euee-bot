@@ -1,0 +1,83 @@
+[
+  {
+    "subject": "math",
+    "question": "If f(x) = 3x + 2, what is f(4)?",
+    "options": {"A": "10", "B": "14", "C": "12", "D": "16"},
+    "answer": "B",
+    "explanation": "f(4) = 3(4) + 2 = 12 + 2 = 14.",
+    "topic": "Functions",
+    "year": 2024
+  },
+  {
+    "subject": "math",
+    "question": "What is the slope of the line y = -2x + 5?",
+    "options": {"A": "5", "B": "2", "C": "-2", "D": "1/2"},
+    "answer": "C",
+    "explanation": "In the form y = mx + b, m is the slope.",
+    "topic": "Linear Equations",
+    "year": 2024
+  },
+  {
+    "subject": "math",
+    "question": "What is the value of log10(100)?",
+    "options": {"A": "1", "B": "2", "C": "10", "D": "100"},
+    "answer": "B",
+    "explanation": "10 squared is 100, so log10(100) = 2.",
+    "topic": "Logarithms",
+    "year": 2023
+  },
+  {
+    "subject": "physics",
+    "question": "Which of the following is a scalar quantity?",
+    "options": {"A": "Velocity", "B": "Force", "C": "Mass", "D": "Acceleration"},
+    "answer": "C",
+    "explanation": "Mass has only magnitude, no direction.",
+    "topic": "Vectors and Scalars",
+    "year": 2024
+  },
+  {
+    "subject": "physics",
+    "question": "What is the unit of electric current?",
+    "options": {"A": "Volt", "B": "Ohm", "C": "Ampere", "D": "Watt"},
+    "answer": "C",
+    "explanation": "Electric current is measured in Amperes (A).",
+    "topic": "Electricity",
+    "year": 2023
+  },
+  {
+    "subject": "chemistry",
+    "question": "What is the pH of a neutral solution at 25°C?",
+    "options": {"A": "0", "B": "7", "C": "14", "D": "1"},
+    "answer": "B",
+    "explanation": "Neutral solutions like pure water have a pH of 7.",
+    "topic": "Acids and Bases",
+    "year": 2024
+  },
+  {
+    "subject": "biology",
+    "question": "Which organelle is responsible for photosynthesis?",
+    "options": {"A": "Mitochondria", "B": "Ribosome", "C": "Chloroplast", "D": "Nucleus"},
+    "answer": "C",
+    "explanation": "Chloroplasts capture light energy to drive photosynthesis.",
+    "topic": "Plant Cells",
+    "year": 2024
+  },
+  {
+    "subject": "english",
+    "question": "Choose the correct form: 'He ___ to school every day.'",
+    "options": {"A": "go", "B": "goes", "C": "going", "D": "gone"},
+    "answer": "B",
+    "explanation": "Third person singular takes 'goes' in simple present.",
+    "topic": "Grammar",
+    "year": 2024
+  },
+  {
+    "subject": "civics",
+    "question": "What is the supreme law of Ethiopia?",
+    "options": {"A": "Civil Code", "B": "The Constitution", "C": "Criminal Law", "D": "Family Law"},
+    "answer": "B",
+    "explanation": "The Constitution is the highest legal document in the country.",
+    "topic": "Constitution",
+    "year": 2024
+  }
+]
