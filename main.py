@@ -9,7 +9,7 @@ import sys
 import asyncio
 from datetime import datetime
 import os
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ConversationHandler, CallbackQueryHandler, filters,
@@ -32,7 +32,8 @@ from handlers import (
     cmd_radar, cmd_predict, error_handler, handle_boss_answer, handle_telebirr_tx, handle_telebirr_photo,
     handle_suggestion, AWAITING_TELEBIRR_TX, AWAITING_TELEBIRR_PHOTO, cmd_id, cmd_demo_upgrade,
     cmd_admin, cmd_manual_upgrade, handle_upgrade_button, cmd_admin_build, cmd_invite, cmd_review_sheet, cmd_plan,
-    safe_handler,
+    cmd_textbooks, handle_textbook_download,
+    safe_handler, run_blocking
 )
 from helpers import format_countdown, safe_user_ref
 
@@ -287,6 +288,7 @@ def build_app():
     app.add_handler(conv)
     # BUG 1 FIX: CallbackQueryHandler in group 1 to prevent double-catch with group 0 conv entry points.
     app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=1)
+    app.add_handler(CallbackQueryHandler(_safe(handle_textbook_download), pattern="^dl_textbook_.*$"))
     # Ensure these commands work even if stuck in a state
     app.add_handler(CommandHandler("start", _safe(start)))
     app.add_handler(CommandHandler("menu", _safe(start)))
