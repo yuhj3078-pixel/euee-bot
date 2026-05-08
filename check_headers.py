@@ -1,4 +1,5 @@
 import httpx
+import os
 
 url = "https://abzhedhtfognzzbuizfh.supabase.co/rest/v1/"
 key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")

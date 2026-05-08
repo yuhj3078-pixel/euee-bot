@@ -236,7 +236,8 @@ async def on_startup():
         await bot.bot.delete_webhook(drop_pending_updates=True)
         success = await bot.bot.set_webhook(
             url=final_webhook_url,
-            allowed_updates=["message", "callback_query", "pre_checkout_query", "poll_answer"]
+            allowed_updates=["message", "callback_query", "pre_checkout_query", "poll_answer"],
+            secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
         )
         if success:
             logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
@@ -334,11 +335,17 @@ async def telegram_webhook(request: Request):
     logger.info("📨 Telegram POST received")
     print("Webhook hit")  # Extra logging for diagnostic
     try:
+        # Pass 4.2/4.6 Hardening: Verify Telegram Secret Token
+        if WEBHOOK_SECRET:
+            token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+            if not token or not hmac.compare_digest(token, WEBHOOK_SECRET):
+                logger.warning(f"🚫 Unauthorized webhook hit from {request.client.host}")
+                return Response(status_code=401)
+        
         # 1. Capture raw body first for logging
         body = await request.body()
         body_str = body.decode(errors="replace")
-        print(f"Update Body: {body_str[:500]}") # Extra logging for diagnostic
-        logger.info(f"📦 Raw Update (first 500 chars): {body_str[:500]}")
+        logger.info(f"📦 Received update (size: {len(body)})")
         
         if not body:
             logger.warning("⚠️ Received empty body in webhook")
@@ -565,25 +572,98 @@ async def admin_overview():
 
 @admin_router.post("/payments/approve")
 async def admin_approve_payment(req: PaymentActionRequest):
+    # Get payment info first to know who to notify
+    supabase = db._get_supabase()
+    resp = supabase.table("payment_attempts").select("*").eq("tx_id", req.tx_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Payment record not found")
+    
+    payment = resp.data[0]
+    telegram_id = payment.get("telegram_id")
+    plan = payment.get("plan_requested", "pro")
+    
     if db.approve_payment(req.tx_id):
+        # Notify the user via Telegram
+        try:
+            bot = get_application()
+            user_data = db.get_user(telegram_id)
+            lang = user_data.get("language", "en") if user_data else "en"
+            
+            tier_name = "MAX" if "max" in plan.lower() else "PRO"
+            msg = (
+                f"🎉 **PAYMENT APPROVED!**\n\n"
+                f"Your account has been upgraded to **{tier_name}**.\n"
+                f"You now have full access to all premium features! 🚀"
+                if lang == "en" else
+                f"🎉 **ክፍያዎ ጸድቋል!**\n\n"
+                f"አካውንትዎ ወደ **{tier_name}** አድጓል።\n"
+                f"አሁን ሁሉንም የፕሪሚየም አገልግሎቶች መጠቀም ይችላሉ! 🚀"
+            )
+            await bot.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Failed to notify user {telegram_id} of approval: {e}")
+            
         return {"status": "success"}
     raise HTTPException(status_code=400, detail="Failed to approve")
 
 @admin_router.post("/payments/reject")
 async def admin_reject_payment(req: PaymentActionRequest):
-    if db.reject_payment(req.tx_id):
-        return {"status": "success"}
+    # Get payment info first to know who to notify
+    supabase = db._get_supabase()
+    resp = supabase.table("payment_attempts").select("*").eq("tx_id", req.tx_id).execute()
+    if resp.data:
+        payment = resp.data[0]
+        telegram_id = payment.get("telegram_id")
+        
+        if db.reject_payment(req.tx_id):
+            try:
+                bot = get_application()
+                user_data = db.get_user(telegram_id)
+                lang = user_data.get("language", "en") if user_data else "en"
+                msg = (
+                    "❌ **PAYMENT REJECTED**\n\n"
+                    "Your payment proof was not verified. Please check the details and try again or contact admin."
+                    if lang == "en" else
+                    "❌ **ክፍያዎ አልተቀበለም**\n\n"
+                    "የክፍያ መረጃዎ ሊረጋገጥ አልቻለም። እባክዎ መረጃውን አረጋግጠው እንደገና ይሞክሩ ወይም አስተዳዳሪውን ያነጋግሩ።"
+                )
+                await bot.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Failed to notify user {telegram_id} of rejection: {e}")
+            return {"status": "success"}
+            
     raise HTTPException(status_code=400, detail="Failed to reject")
 
 @admin_router.post("/payments/auto_approve")
 async def admin_auto_approve():
     pending = db.get_pending_payments()
     approved, skipped = [], []
+    bot = get_application()
+    
     for p in pending:
         tx = p.get("tx_id") or p.get("transaction_id")
+        telegram_id = p.get("telegram_id")
+        plan = p.get("plan_requested", "pro")
+        
         if tx and payments.validate_telebirr_tx_id(tx) and p.get("screenshot_url"):
             if db.approve_payment(tx):
                 approved.append(tx)
+                # Notify
+                try:
+                    user_data = db.get_user(telegram_id)
+                    lang = user_data.get("language", "en") if user_data else "en"
+                    tier_name = "MAX" if "max" in plan.lower() else "PRO"
+                    msg = (
+                        f"🎉 **PAYMENT AUTO-APPROVED!**\n\n"
+                        f"Your account has been upgraded to **{tier_name}**.\n"
+                        f"Go to the menu to start! 🚀"
+                        if lang == "en" else
+                        f"🎉 **ክፍያዎ በራስ-ሰር ጸድቋል!**\n\n"
+                        f"አካውንትዎ ወደ **{tier_name}** አድጓል።\n"
+                        f"ለመጀመር ወደ ማውጫው ይሂዱ! 🚀"
+                    )
+                    await bot.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="Markdown")
+                except: pass
                 continue
         skipped.append(tx)
     return {"approved": approved, "skipped": skipped}

@@ -19,6 +19,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     filters,
     ContextTypes,
+    PicklePersistence,
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -305,9 +306,11 @@ def build_app():
     if sys.stdout.encoding != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+    persistence = PicklePersistence(filepath="bot_state.pickle")
     app = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
+        .persistence(persistence)
         .post_init(post_init)
         .post_stop(post_stop)
         .build()

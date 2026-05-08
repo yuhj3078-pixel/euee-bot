@@ -152,13 +152,14 @@ from config import (
     ADMIN_IDS,
     TELEBIRR_NUMBER,
     AWAITING_FEATURE_SUGGESTION,
+    AWAITING_TELEBIRR_PHOTO,
+    AWAITING_TELEBIRR_TX,
 )
 
 from payments import validate_telebirr_tx_id, is_valid_image
 
 # State definitions for ConversationHandler (add to existing state constants visually)
-AWAITING_TELEBIRR_TX = 100
-AWAITING_TELEBIRR_PHOTO = 101
+
 
 
 def _get_fresh_tier(telegram_id: int) -> str:
@@ -1594,7 +1595,7 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_myid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    \"\"\"Helps the user find their Telegram ID.\"\"\"
+    """Helps the user find their Telegram ID."""
     user_id = update.effective_user.id
     await update.message.reply_text(f"Your Telegram ID is: `{user_id}`", parse_mode="Markdown")
 

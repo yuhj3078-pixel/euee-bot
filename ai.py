@@ -415,7 +415,17 @@ def ask_abebe(
     system = ABEBE_SYSTEM_EN if lang == "en" else ABEBE_SYSTEM_AM
     context = ""
     if context_chunks:
-        context = "\n\n[Textbook Material]\n" + "\n---\n".join(context_chunks[:10])
+        # Robustly handle cases where chunks might be dicts (from older DB calls) or strings
+        safe_chunks = []
+        for c in context_chunks:
+            if isinstance(c, dict):
+                safe_chunks.append(c.get("text", str(c)))
+            elif isinstance(c, str):
+                safe_chunks.append(c)
+            else:
+                safe_chunks.append(str(c))
+        
+        context = "\n\n[Textbook Material]\n" + "\n---\n".join(safe_chunks[:10])
     
     # Check for AI availability
     if not any([_gemini_available(), _groq_available(), _openrouter_available()]):

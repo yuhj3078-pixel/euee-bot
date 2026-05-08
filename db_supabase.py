@@ -1046,18 +1046,19 @@ def set_cached_content(key: str, data: dict):
         pass
 
 
-def get_chunks_for_subject(subject: str, limit: int = 10) -> list:
+def get_chunks_for_subject(subject: str, limit: int = 10) -> list[str]:
     try:
         supabase = _get_supabase()
         resp = (
             supabase.table("textbook_chunks")
-            .select("*")
+            .select("text")
             .eq("subject", subject)
             .limit(limit)
             .execute()
         )
-        return resp.data
-    except Exception:
+        return [row["text"] for row in resp.data if "text" in row]
+    except Exception as e:
+        logger.error(f"Error fetching chunks for {subject}: {e}")
         return []
 
 
