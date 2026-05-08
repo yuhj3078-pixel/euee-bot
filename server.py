@@ -9,6 +9,7 @@ import time
 import hashlib
 import asyncio
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, APIRouter, Response
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -37,6 +38,38 @@ def get_application():
         from main import build_app as build_bot_app
         application = build_bot_app()
     return application
+
+
+def _resolve_public_base_url() -> str:
+    """Pick the best reachable public base URL for webhook registration."""
+    candidates = [
+        os.getenv("RAILWAY_PUBLIC_DOMAIN", ""),
+        os.getenv("RAILWAY_STATIC_URL", ""),
+        os.getenv("BASE_WEB_URL", ""),
+        os.getenv("WEBHOOK_URL", ""),
+    ]
+
+    for raw in candidates:
+        value = (raw or "").strip().rstrip("/")
+        if not value:
+            continue
+
+        if not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+
+        parsed = urlparse(value)
+        if not parsed.netloc:
+            continue
+
+        path = parsed.path.rstrip("/")
+        if path.endswith("/webhook"):
+            path = path[:-8]
+        if path.endswith("/telegram/webhook"):
+            path = path[:-17]
+
+        return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+
+    return ""
 
 # ── Redis Rate Limiting (Pass 6.3) ──────────────────────────────────────────
 REDIS_URL = os.getenv("REDIS_URL")
@@ -161,7 +194,7 @@ async def on_startup():
         return # Stop here if bot failed
 
     dev_mode = os.getenv("DEV_MODE", "").lower() in ("1", "true", "yes")
-    webhook_url = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
+    webhook_base_url = _resolve_public_base_url()
     
     # ── Background Worker / Scheduler Hardening ────────────────────────────────
     # FIX: Ensure scheduler only starts ONCE.
@@ -195,14 +228,8 @@ async def on_startup():
         # Start the polling in the background (non-blocking)
         await bot.updater.start_polling()
         logger.info("✅ Polling started. The bot should now respond to messages locally.")
-    elif webhook_url:
-        # Clean up common mistakes in WEBHOOK_URL (stripping accidental path suffixes)
-        if webhook_url.endswith("/webhook"):
-            webhook_url = webhook_url[:-8]
-        if webhook_url.endswith("/telegram/webhook"):
-            webhook_url = webhook_url[:-17]
-            
-        final_webhook_url = f"{webhook_url}/telegram/webhook"
+    elif webhook_base_url:
+        final_webhook_url = f"{webhook_base_url}/telegram/webhook"
         logger.info(f"📤 Setting webhook to: {final_webhook_url}")
         
         # Pass 3.4/3.6 Hardening: Ensure webhook is set with clean slate
@@ -216,7 +243,7 @@ async def on_startup():
         else:
             logger.error(f"❌ FAILED TO SET WEBHOOK to {final_webhook_url}. Check BOT_TOKEN and URL accessibility.")
     else:
-        logger.warning("⚠️ No WEBHOOK_URL and not in DEV_MODE. The bot will NOT receive updates.")
+        logger.warning("⚠️ No reachable public base URL was found and not in DEV_MODE. The bot will NOT receive updates.")
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -285,6 +312,7 @@ async def debug_bot():
         "initialized": bot is not None,
         "token_configured": bool(BOT_TOKEN),
         "webhook_url": os.getenv("WEBHOOK_URL"),
+        "resolved_public_base_url": _resolve_public_base_url(),
         "railway_env": os.getenv("RAILWAY_ENVIRONMENT")
     }
 
