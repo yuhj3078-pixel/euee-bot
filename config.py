@@ -186,7 +186,7 @@ SUBJECTS = {
     AWAITING_TELEBIRR_PHOTO,
     AWAITING_TELEBIRR_TX,
     AWAITING_FEATURE_SUGGESTION,
-) = range(7)
+) = range(8)
 
 # ── Abebe persona (system prompt) ────────────────────────────────────────────
 ABEBE_SYSTEM_EN = """You are Abebe, a wise, warm, funny Ethiopian tutor helping Grade 12 students 
