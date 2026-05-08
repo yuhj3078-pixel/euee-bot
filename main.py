@@ -286,6 +286,17 @@ def build_app():
 
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, _safe(lambda u, c: logger.info(f"📥 Global catch-all: {u.to_dict()}"))))
+    async def safe_log_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_ref = safe_user_ref(getattr(update.effective_user, "id", None))
+        if update.message and update.message.text:
+            text = (update.message.text or "").strip()
+            if text.startswith("/"):
+                logger.info("[MSG] user=%s command=%s", user_ref, text.split()[0])
+            else:
+                logger.info("[MSG] user=%s text_chars=%s", user_ref, len(text))
+        elif update.callback_query:
+            logger.info("[BTN] user=%s data=%s", user_ref, str(update.callback_query.data)[:80])
+
     app.add_handler(MessageHandler(filters.ALL, safe_log_messages), group=-1)
     app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=1)
     app.add_handler(CallbackQueryHandler(_safe(handle_textbook_download), pattern="^dl_textbook_.*$"))
