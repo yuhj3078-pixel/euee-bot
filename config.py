@@ -72,7 +72,7 @@ def validate_env():
     required = [
         ("BOT_TOKEN", BOT_TOKEN, 20),
         ("ADMIN_TOKEN", ADMIN_TOKEN, 16),
-        ("WEBHOOK_SECRET", WEBHOOK_SECRET, 12),
+        # WEBHOOK_SECRET is now optional
         # FIX: Webhook URL is mandatory in production webhook mode.
         ("WEBHOOK_URL", WEBHOOK_URL, 12),
         ("BASE_WEB_URL", BASE_WEB_URL, 12),

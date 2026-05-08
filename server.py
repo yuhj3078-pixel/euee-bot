@@ -182,9 +182,7 @@ async def on_startup():
         logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
     else:
         logger.error("❌ Failed to set webhook")
-    else:
-        logger.info("📡 No WEBHOOK_URL detected — starting in polling mode (non-blocking).")
-        await bot.updater.start_polling(drop_pending_updates=True)
+    # [Removed orphaned else block]
 
     # FIX: Start background scheduler here when running as the Railway web service.
     # main.py's post_init skips scheduler in webhook/Railway mode to avoid duplicates.
