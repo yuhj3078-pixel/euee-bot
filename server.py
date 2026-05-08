@@ -141,18 +141,19 @@ async def on_startup():
         logger.error(f"🔴 DATABASE CONNECTION TEST FAILED: {exc}")
         logger.error("The app will start, but database-dependent features will fail. Check Supabase credentials.")
 
+    bot = _get_ptb_app()
     try:
-        bot = _get_ptb_app()
         await bot.initialize()
         await bot.start()
         logger.info("🤖 Bot initialized and started successfully.")
     except Exception as exc:
         logger.error(f"🔴 BOT INITIALIZATION FAILED: {exc}")
         logger.error("The web server will stay up, but the Telegram bot will NOT respond.")
+        return # Stop here if bot failed
+
     webhook_url = os.getenv("WEBHOOK_URL", "").strip()
     if webhook_url:
         logger.info("Setting webhook to %s/telegram/webhook", webhook_url)
-        # FIX: Never use hardcoded secrets in production — rely on env var only.
         if not WEBHOOK_SECRET:
             logger.error("WEBHOOK_SECRET not set — cannot register secure webhook.")
         else:
