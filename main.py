@@ -397,10 +397,11 @@ def build_app():
         allow_reentry=True,
     )
 
+    # Add conversation handler FIRST so it can catch its entry points (like upgrade_)
+    app.add_handler(conv)
+    
     # Group 0: High-priority global handlers (Admin, etc.)
     app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=0)
-    
-    app.add_handler(conv)
     
     # Global catch-all should respond to user if nothing else matched
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _safe(start)))
