@@ -282,25 +282,19 @@ async def test():
 async def ping():
     return "pong"
 
-# ── Catch-all Diagnostic Route ──────────────────────────────────────────────
-@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def catch_all(request: Request, path_name: str):
-    """Logs any request that doesn't match an existing route to help debug 404s."""
-    logger.warning(f"🚩 CATCH-ALL HIT: [{request.method}] /{path_name} from {request.client.host if request.client else 'unknown'}")
-    return JSONResponse(
-        status_code=404,
-        content={"error": "Not Found", "path": path_name, "method": request.method}
-    )
+
 
 # STEP 2 - The exact webhook handler requested
 @app.post("/telegram/webhook")
 @app.post("/telegram/webhook/")
 async def telegram_webhook(request: Request):
     logger.info("📨 Telegram POST received")
+    print("Webhook hit")  # Extra logging for diagnostic
     try:
         # 1. Capture raw body first for logging
         body = await request.body()
         body_str = body.decode(errors="replace")
+        print(f"Update Body: {body_str[:500]}") # Extra logging for diagnostic
         logger.info(f"📦 Raw Update (first 500 chars): {body_str[:500]}")
         
         if not body:
@@ -618,6 +612,16 @@ async def parent_dashboard(request: Request, token: str):
         "report": report_text,
     }
     return templates.TemplateResponse("dashboard.html", context)
+
+# ── Catch-all Diagnostic Route ──────────────────────────────────────────────
+@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(request: Request, path_name: str):
+    """Logs any request that doesn't match an existing route to help debug 404s."""
+    logger.warning(f"🚩 CATCH-ALL HIT: [{request.method}] /{path_name} from {request.client.host if request.client else 'unknown'}")
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Not Found", "path": path_name, "method": request.method}
+    )
 
 if __name__ == "__main__":
     import uvicorn
