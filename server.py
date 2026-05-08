@@ -130,6 +130,14 @@ async def admin_auth(request: Request):
 # ── Admin Router (Pass 3.2 Default-Deny) ─────────────────────────────────────
 admin_router = APIRouter(prefix="/api/admin", dependencies=[Depends(admin_auth)])
 
+# ── Request Logging Middleware (Diagnostic) ──────────────────────────────────
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"🌐 [{request.method}] {request.url.path} from {request.client.host}")
+    response = await call_next(request)
+    logger.info(f"🔙 [{request.method}] {request.url.path} -> {response.status_code}")
+    return response
+
 @app.on_event("startup")
 async def on_startup():
     validate_env()
