@@ -196,15 +196,17 @@ async def on_startup():
 
     final_webhook_url = f"{webhook_url}/telegram/webhook"
     logger.info(f"📤 Setting webhook to: {final_webhook_url}")
+    
+    # Pass 3.4/3.6 Hardening: Ensure webhook is set with clean slate
     await bot.bot.delete_webhook(drop_pending_updates=True)
     success = await bot.bot.set_webhook(
         url=final_webhook_url,
-        allowed_updates=["message", "callback_query"]
+        allowed_updates=["message", "callback_query", "pre_checkout_query", "poll_answer"]
     )
     if success:
         logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
     else:
-        logger.error("❌ Failed to set webhook")
+        logger.error(f"❌ FAILED TO SET WEBHOOK to {final_webhook_url}. Check BOT_TOKEN and URL accessibility.")
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -299,7 +301,7 @@ async def telegram_webhook(request: Request):
         
         if not body:
             logger.warning("⚠️ Received empty body in webhook")
-            return Response(status_code=200)
+            return Response(content="Empty body", status_code=200)
 
         bot_app = get_application()
         if bot_app is None:
@@ -310,20 +312,22 @@ async def telegram_webhook(request: Request):
         import json
         try:
             data = json.loads(body_str)
+            logger.debug(f"Parsed Update JSON: {data}")
         except Exception as je:
-            logger.error(f"❌ Failed to parse JSON: {je}")
-            return Response(status_code=200)
+            logger.error(f"❌ Failed to parse JSON: {je} | Body: {body_str[:200]}")
+            return Response(content="Invalid JSON", status_code=200)
 
         # 3. Process Update
         update = Update.de_json(data, bot_app.bot)
         if update:
-            logger.info(f"✅ Update parsed: {update.update_id} (type: {update.effective_chat.type if update.effective_chat else 'N/A'})")
+            user_id = update.effective_user.id if update.effective_user else "N/A"
+            logger.info(f"✅ Processing update {update.update_id} for user {user_id}")
             await bot_app.process_update(update)
-            logger.info(f"✅ Update processed: {update.update_id}")
+            logger.info(f"✅ Update {update.update_id} processed successfully")
         else:
-            logger.warning("⚠️ Update.de_json returned None")
+            logger.warning("⚠️ Update.de_json returned None for valid JSON")
             
-        return Response(status_code=200)
+        return Response(content="OK", status_code=200)
     except Exception as e:
         logger.error(f"❌ Webhook handling error: {e}", exc_info=True)
         # Always return 200 to Telegram to stop retries if the error is unrecoverable

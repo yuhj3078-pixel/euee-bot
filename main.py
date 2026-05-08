@@ -183,7 +183,8 @@ async def post_init(application):
 
     # FIX: Scheduler runs only in standalone mode (polling). When server.py is the entry point,
     # scheduler is started there to avoid duplicate jobs.
-    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("WEBHOOK_URL"):
+    from config import WEBHOOK_URL
+    if os.getenv("RAILWAY_ENVIRONMENT") or WEBHOOK_URL:
         logger.info("🔧 Railway/webhook mode detected — scheduler will be started by server.py.")
         return
 
@@ -196,7 +197,7 @@ async def post_init(application):
     scheduler.add_job(reset_weekly_counters, "cron", day_of_week="mon", hour=21, minute=0, args=[application])
     scheduler.add_job(db.check_and_expire_subscriptions, "interval", hours=1, args=[application])
     scheduler.start()
-    logger.info("📅 Scheduler started (cron reminders attached).")
+    logger.info("📅 Scheduler started in standalone mode.")
 
 
 async def post_stop(application):
@@ -208,6 +209,7 @@ async def post_stop(application):
 
 
 # [Unified build_app is now located below in the FastAPI section]
+
 
 
 from fastapi import FastAPI, Request, HTTPException
@@ -276,16 +278,18 @@ def build_app():
         },
         fallbacks=[
             CommandHandler("menu", _safe(start)),
-            MessageHandler(filters.ALL, _safe(lambda u, c: logger.info(f"📥 Handled by fallback: {u.to_dict()}")))
+            # Fallback to start if confused
+            MessageHandler(filters.ALL & ~filters.COMMAND, _safe(start))
         ],
         per_user=True,
         per_chat=True,
-        per_message=False,
+        per_message=False, # BUG FIX: per_message=True breaks conversations across separate messages
         allow_reentry=True,
     )
 
     app.add_handler(conv)
-    app.add_handler(MessageHandler(filters.ALL, _safe(lambda u, c: logger.info(f"📥 Global catch-all: {u.to_dict()}"))))
+    # Global catch-all should respond to user if nothing else matched
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, _safe(start)))
     async def safe_log_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_ref = safe_user_ref(getattr(update.effective_user, "id", None))
         if update.message and update.message.text:
