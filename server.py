@@ -221,19 +221,30 @@ def _handle_sigterm(signum, frame):
 
 signal.signal(signal.SIGTERM, _handle_sigterm)
 
+@app.get("/")
+@app.get("/health")
+async def root_health(request: Request):
+    """Core health check and diagnostic endpoint."""
+    logger.info(f"🩺 Health check hit from {request.client.host}")
+    return {
+        "status": "ok",
+        "service": "Abebe EUEE Bot",
+        "version": "2.1",
+        "detected_url": str(request.url),
+        "host_header": request.headers.get("host")
+    }
+
 @app.get("/telegram/webhook")
-async def telegram_webhook_info():
+async def telegram_webhook_info(request: Request):
     """Diagnostic endpoint to check webhook status."""
+    logger.info(f"🔍 Webhook info requested from {request.client.host}")
     bot = _get_ptb_app()
     info = await bot.bot.get_webhook_info()
     return {
         "url": info.url,
-        "has_custom_certificate": info.has_custom_certificate,
         "pending_update_count": info.pending_update_count,
-        "last_error_date": info.last_error_date,
         "last_error_message": info.last_error_message,
-        "max_connections": info.max_connections,
-        "ip_address": info.ip_address,
+        "detected_host": request.headers.get("host"),
     }
 
 @app.post("/telegram/webhook")
@@ -263,16 +274,7 @@ async def telegram_webhook(request: Request):
         logger.error(f"💥 Error processing webhook: {exc}")
         return {"ok": False, "error": str(exc)}
 
-@app.get("/")
-@app.get("/health")
-async def root_health(request: Request):
-    return {
-        "status": "ok",
-        "service": "Abebe EUEE Bot",
-        "version": "2.0",
-        "detected_url": str(request.url),
-        "headers": {k: v for k, v in request.headers.items() if "auth" not in k.lower() and "key" not in k.lower()}
-    }
+# (duplicate route removed — root_health is defined above at /health and /)
 
 # ── Chapa Payment Webhook (Automated Real-Time Upgrade) ─────────────────────
 @app.post("/api/payments/chapa/callback")
