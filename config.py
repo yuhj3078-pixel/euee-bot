@@ -29,8 +29,12 @@ ALLOW_DEMO_UPGRADE  = os.getenv("ALLOW_DEMO_UPGRADE", "").lower() in ("1", "true
 WEBHOOK_SECRET      = os.getenv("WEBHOOK_SECRET", "")
 def _safe_int(value: str, default: int = 0) -> int:
     """Safely parse integer from env, return default on invalid value."""
+    if not value:
+        return default
     try:
-        return int(value) if value else default
+        # Strip quotes if present (common in manually edited .env files)
+        clean_val = value.strip().strip('"').strip("'")
+        return int(clean_val)
     except (ValueError, TypeError):
         return default
 
