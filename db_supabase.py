@@ -80,6 +80,7 @@ def has_access(tier: str, feature: str) -> bool:
 
 def get_user(telegram_id: int) -> dict | None:
     try:
+        telegram_id = int(telegram_id)
         supabase = _get_supabase()
         response = (
             supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
@@ -97,6 +98,7 @@ def create_user(telegram_id: int, name: str, language: str = "en") -> bool:
 
 def update_user(telegram_id: int, updates: dict) -> bool:
     try:
+        telegram_id = int(telegram_id)
         supabase = _get_supabase()
         response = (
             supabase.table("users")
@@ -610,8 +612,14 @@ def approve_payment(tx_id: str) -> bool:
         days = 365 if "year" in plan else 30
         expiry = datetime.now(timezone.utc) + timedelta(days=days)
 
-        update_user(
-            payment["telegram_id"],
+        # Ensure telegram_id is an integer for the query
+        user_id = int(payment.get("telegram_id", 0))
+        if user_id <= 0:
+            return False
+
+        # Attempt to upgrade the user
+        success = update_user(
+            user_id,
             {
                 "tier": tier,
                 "subscription_active": True,
@@ -619,6 +627,9 @@ def approve_payment(tx_id: str) -> bool:
                 "tier_updated_at": _now(),
             },
         )
+        if not success:
+            logger.error(f"Failed to update user {user_id} to tier {tier} during approval")
+            return False
 
         # Mark payment approved
         supabase = _get_supabase()
