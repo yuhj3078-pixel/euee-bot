@@ -76,9 +76,22 @@ def update_user(telegram_id: int, updates: dict) -> bool:
         if not response.data:
             updates["telegram_id"] = telegram_id
             supabase.table("users").upsert(updates).execute()
+
+        # Log successful aggregate updates at INFO level (mask user id)
+        try:
+            logger.info(
+                "Updated user %s — keys=%s",
+                safe_user_ref(telegram_id),
+                list(updates.keys()),
+            )
+        except Exception:
+            # Ensure logging never raises
+            pass
+
         return True
     except Exception as e:
-        logger.error("Error updating %s: %s", safe_user_ref(telegram_id), e)
+        # Log full exception for diagnostics (safe_user_ref masks telegram id)
+        logger.exception("Error updating %s: %s", safe_user_ref(telegram_id), e)
         return False
 
 def get_random_real_question(subject: str) -> dict | None:

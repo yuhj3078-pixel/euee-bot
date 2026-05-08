@@ -1871,16 +1871,16 @@ async def cmd_textbooks(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lang = user.get("language", "en") if user else "en"
     
     keyboard = [
-        [InlineKeyboardButton("📐 Math", callback_query_data="dl_textbook_math"),
-         InlineKeyboardButton("⚛️ Physics", callback_query_data="dl_textbook_physics")],
-        [InlineKeyboardButton("🧪 Chemistry", callback_query_data="dl_textbook_chemistry"),
-         InlineKeyboardButton("🧬 Biology", callback_query_data="dl_textbook_biology")],
-        [InlineKeyboardButton("🌍 Geography", callback_query_data="dl_textbook_geography"),
-         InlineKeyboardButton("📜 History", callback_query_data="dl_textbook_history")],
-        [InlineKeyboardButton("📖 English", callback_query_data="dl_textbook_english"),
-         InlineKeyboardButton("🚜 Agriculture", callback_query_data="dl_textbook_agriculture")],
-        [InlineKeyboardButton("💻 IT", callback_query_data="dl_textbook_it"),
-         InlineKeyboardButton("💹 Economics", callback_query_data="dl_textbook_economics")],
+        [InlineKeyboardButton("📐 Math", callback_data="dl_textbook_math"),
+         InlineKeyboardButton("⚛️ Physics", callback_data="dl_textbook_physics")],
+        [InlineKeyboardButton("🧪 Chemistry", callback_data="dl_textbook_chemistry"),
+         InlineKeyboardButton("🧬 Biology", callback_data="dl_textbook_biology")],
+        [InlineKeyboardButton("🌍 Geography", callback_data="dl_textbook_geography"),
+         InlineKeyboardButton("📜 History", callback_data="dl_textbook_history")],
+        [InlineKeyboardButton("📖 English", callback_data="dl_textbook_english"),
+         InlineKeyboardButton("🚜 Agriculture", callback_data="dl_textbook_agriculture")],
+        [InlineKeyboardButton("💻 IT", callback_data="dl_textbook_it"),
+         InlineKeyboardButton("💹 Economics", callback_data="dl_textbook_economics")],
     ]
     
     if lang == "en":
@@ -1955,16 +1955,18 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Invalid plan.")
         return ConversationHandler.END
 
-    # Pass 3.8/4.2: Strict single-subscription enforcement
+    # Pass 3.8/4.2: Strict single-subscription enforcement for paid plans only
     user = db.get_user(query.from_user.id)
-    if db.is_subscription_active(query.from_user.id):
-        lang = user.get("language", "en")
+    current_tier = db.normalize_tier(user.get("tier") if user else None)
+    has_active_paid_plan = current_tier in {"pro", "max"} and db.is_subscription_active(query.from_user.id)
+    if has_active_paid_plan:
+        lang = user.get("language", "en") if user else "en"
         msg = (
-            "⏳ **You already have an active subscription!**\n\n"
+            "⏳ **You already have an active paid subscription!**\n\n"
             "Please wait for your current plan to expire before upgrading or renewing. "
             "Check your status with /plan."
             if lang == "en"
-            else "⏳ **አሁንም ንቁ የሆነ ደንበኝነት አለዎት!**\n\n"
+            else "⏳ **አሁንም ንቁ የተከፈለበት ደንበኝነት አለዎት!**\n\n"
             "እባክዎን አሁን ያለው የደንበኝነት ጊዜ እስኪያልቅ ድረስ ይጠብቁ። ሁኔታዎን በ /plan ማየት ይችላሉ።"
         )
         await query.message.reply_text(msg, parse_mode="Markdown")
