@@ -163,7 +163,15 @@ async def on_startup():
         if not WEBHOOK_SECRET:
             logger.error("WEBHOOK_SECRET not set — cannot register secure webhook.")
         else:
-            await bot.bot.set_webhook(url=f"{webhook_url}/telegram/webhook", secret_token=WEBHOOK_SECRET)
+            final_webhook_url = f"{webhook_url}/telegram/webhook"
+            logger.info(f"📤 Registering webhook at: {final_webhook_url}")
+            await bot.bot.delete_webhook() # Clear any existing polling/webhook
+            success = await bot.bot.set_webhook(url=final_webhook_url, secret_token=WEBHOOK_SECRET)
+            if success:
+                info = await bot.bot.get_webhook_info()
+                logger.info(f"✅ Webhook successfully set. Telegram Info: URL={info.url}, Pending={info.pending_update_count}")
+            else:
+                logger.error("❌ Failed to set Telegram webhook.")
 
     # FIX: Start background scheduler here when running as the Railway web service.
     # main.py's post_init skips scheduler in webhook/Railway mode to avoid duplicates.
