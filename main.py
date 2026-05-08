@@ -215,7 +215,7 @@ import uvicorn
 import hmac
 
 # ── FastAPI App Configuration ────────────────────────────────────────────────
-from server import app as web_app
+# Defer server import to main() to avoid circular dependency
 
 
 
@@ -316,10 +316,10 @@ async def main():
     # which is triggered when uvicorn starts.
     port = int(os.environ.get("PORT", 8080))
     
-    # Start FastAPI with Uvicorn (web_app is imported from server.app)
-    config = uvicorn.Config(web_app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
-    server = uvicorn.Server(config)
-    await server.serve()
+    # Start FastAPI with Uvicorn (Defer import to break circular dependency)
+    from server import app as web_app
+    logger.info(f"🚀 Starting Uvicorn on port {port}...")
+    uvicorn.run(web_app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
 
 if __name__ == "__main__":
     asyncio.run(main())

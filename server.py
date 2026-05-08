@@ -349,10 +349,7 @@ async def verify_payment_api(tx_ref: str):
     return {"status": "pending", "message": "Payment not yet confirmed by Chapa."}
 
 
-@app.get("/health")
-async def health_check():
-    """FIX: Explicit /health endpoint for Railway healthchecks. Must return HTTP 200."""
-    return {"status": "ok", "service": "Abebe EUEE Bot", "version": "2.0"}
+# (Duplicate /health removed)
 
 _allowed_origins = [BASE_WEB_URL] if (BASE_WEB_URL and "your-url" not in BASE_WEB_URL) else ["http://localhost:3000", "http://127.0.0.1:3000"]
 app.add_middleware(
