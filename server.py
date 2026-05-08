@@ -161,15 +161,8 @@ async def on_startup():
         logger.error("The web server will stay up, but the Telegram bot will NOT respond.")
         return # Stop here if bot failed
 
+    dev_mode = os.getenv("DEV_MODE", "").lower() in ("1", "true", "yes")
     webhook_url = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
-    if webhook_url:
-        # Clean up common mistakes in WEBHOOK_URL (stripping accidental path suffixes)
-        if webhook_url.endswith("/webhook"):
-            webhook_url = webhook_url[:-8]
-        if webhook_url.endswith("/telegram/webhook"):
-            webhook_url = webhook_url[:-17]
-            
-        logger.info("Setting webhook to %s/telegram/webhook", webhook_url)
     
     # ── Background Worker / Scheduler Hardening ────────────────────────────────
     # FIX: Ensure scheduler only starts ONCE.
@@ -188,25 +181,41 @@ async def on_startup():
             scheduler.add_job(db.check_and_expire_subscriptions, "interval", hours=1, args=[bot])
             scheduler.start()
             app.scheduler_started = True
-            logger.info("📅 Scheduler started in server.py (Railway mode).")
+            logger.info("📅 Scheduler started in server.py.")
         except ImportError:
             logger.error("❌ apscheduler not installed. Background jobs will NOT run.")
         except Exception as exc:
             logger.error(f"❌ Failed to start scheduler: {exc}")
 
-    final_webhook_url = f"{webhook_url}/telegram/webhook"
-    logger.info(f"📤 Setting webhook to: {final_webhook_url}")
-    
-    # Pass 3.4/3.6 Hardening: Ensure webhook is set with clean slate
-    await bot.bot.delete_webhook(drop_pending_updates=True)
-    success = await bot.bot.set_webhook(
-        url=final_webhook_url,
-        allowed_updates=["message", "callback_query", "pre_checkout_query", "poll_answer"]
-    )
-    if success:
-        logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
+    if dev_mode:
+        logger.info("🛠️ DEV_MODE detected — using long-polling for local testing.")
+        # Ensure any old webhook is removed so polling works
+        await bot.bot.delete_webhook(drop_pending_updates=True)
+        # Start the polling in the background (non-blocking)
+        await bot.updater.start_polling()
+        logger.info("✅ Polling started. The bot should now respond to messages locally.")
+    elif webhook_url:
+        # Clean up common mistakes in WEBHOOK_URL (stripping accidental path suffixes)
+        if webhook_url.endswith("/webhook"):
+            webhook_url = webhook_url[:-8]
+        if webhook_url.endswith("/telegram/webhook"):
+            webhook_url = webhook_url[:-17]
+            
+        final_webhook_url = f"{webhook_url}/telegram/webhook"
+        logger.info(f"📤 Setting webhook to: {final_webhook_url}")
+        
+        # Pass 3.4/3.6 Hardening: Ensure webhook is set with clean slate
+        await bot.bot.delete_webhook(drop_pending_updates=True)
+        success = await bot.bot.set_webhook(
+            url=final_webhook_url,
+            allowed_updates=["message", "callback_query", "pre_checkout_query", "poll_answer"]
+        )
+        if success:
+            logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
+        else:
+            logger.error(f"❌ FAILED TO SET WEBHOOK to {final_webhook_url}. Check BOT_TOKEN and URL accessibility.")
     else:
-        logger.error(f"❌ FAILED TO SET WEBHOOK to {final_webhook_url}. Check BOT_TOKEN and URL accessibility.")
+        logger.warning("⚠️ No WEBHOOK_URL and not in DEV_MODE. The bot will NOT receive updates.")
 
 @app.on_event("shutdown")
 async def on_shutdown():
