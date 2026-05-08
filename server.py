@@ -171,19 +171,17 @@ async def on_startup():
             webhook_url = webhook_url[:-17]
             
         logger.info("Setting webhook to %s/telegram/webhook", webhook_url)
-        if not WEBHOOK_SECRET:
-            logger.error("WEBHOOK_SECRET not set — cannot register secure webhook.")
-        else:
-            final_webhook_url = f"{webhook_url}/telegram/webhook"
-            masked_token = f"{BOT_TOKEN[:8]}...{BOT_TOKEN[-4:]}"
-            logger.info(f"📤 Registering webhook for bot {masked_token} at: {final_webhook_url}")
-            await bot.bot.delete_webhook()
-            success = await bot.bot.set_webhook(url=final_webhook_url, secret_token=WEBHOOK_SECRET)
-            if success:
-                info = await application.bot.get_webhook_info() # Use the shared instance
-                logger.info(f"✅ Webhook successfully set. URL={info.url}, Pending={info.pending_update_count}, Error={info.last_error_message}")
-            else:
-                logger.error("❌ Failed to set Telegram webhook.")
+    final_webhook_url = f"{webhook_url}/telegram/webhook"
+    logger.info(f"📤 Setting webhook to: {final_webhook_url}")
+    await bot.bot.delete_webhook(drop_pending_updates=True)
+    success = await bot.bot.set_webhook(
+        url=final_webhook_url,
+        allowed_updates=["message", "callback_query"]
+    )
+    if success:
+        logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
+    else:
+        logger.error("❌ Failed to set webhook")
     else:
         logger.info("📡 No WEBHOOK_URL detected — starting in polling mode (non-blocking).")
         await bot.updater.start_polling(drop_pending_updates=True)
@@ -260,15 +258,20 @@ async def test():
 # STEP 2 - The exact webhook handler requested
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
+    logger.info("📨 Telegram update received")
     try:
+        bot_app = get_application()
+        if bot_app is None:
+            logger.error("Application not initialized")
+            return JSONResponse({"ok": False}, status_code=200)
         data = await request.json()
-        # STEP 3 - Uses the shared 'application' object
-        update = Update.de_json(data, application.bot)
-        await application.process_update(update)
-        return {"ok": True}
+        logger.info(f"Update data: {str(data)[:100]}")
+        update = Update.de_json(data, bot_app.bot)
+        await bot_app.process_update(update)
+        return JSONResponse({"ok": True}, status_code=200)
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return {"ok": False}
+        logger.error(f"Webhook error: {e}", exc_info=True)
+        return JSONResponse({"ok": False}, status_code=200)
 
 # (duplicate route removed — root_health is defined above at /health and /)
 
