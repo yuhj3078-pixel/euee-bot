@@ -151,8 +151,14 @@ async def on_startup():
         logger.error("The web server will stay up, but the Telegram bot will NOT respond.")
         return # Stop here if bot failed
 
-    webhook_url = os.getenv("WEBHOOK_URL", "").strip()
+    webhook_url = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
     if webhook_url:
+        # Clean up common mistakes in WEBHOOK_URL (stripping accidental path suffixes)
+        if webhook_url.endswith("/webhook"):
+            webhook_url = webhook_url[:-8]
+        if webhook_url.endswith("/telegram/webhook"):
+            webhook_url = webhook_url[:-17]
+            
         logger.info("Setting webhook to %s/telegram/webhook", webhook_url)
         if not WEBHOOK_SECRET:
             logger.error("WEBHOOK_SECRET not set — cannot register secure webhook.")
@@ -192,6 +198,7 @@ def _handle_sigterm(signum, frame):
 signal.signal(signal.SIGTERM, _handle_sigterm)
 
 @app.post("/telegram/webhook")
+@app.post("/webhook/telegram/webhook") # Fallback for misconfigured env vars
 async def telegram_webhook(request: Request):
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     # FIX: Strict secret check — reject if no secret configured or mismatch.
