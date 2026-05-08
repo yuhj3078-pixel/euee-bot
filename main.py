@@ -62,6 +62,7 @@ from handlers import (
     cmd_admin,
     cmd_manual_upgrade,
     handle_upgrade_button,
+    cmd_upgrade,
     cmd_admin_build,
     cmd_invite,
     cmd_review_sheet,
@@ -324,9 +325,17 @@ def build_app():
         entry_points=[
             CommandHandler("start", _safe(start)),
             CommandHandler("menu", _safe(start)),
+            CommandHandler("myid", _safe(cmd_myid)),
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND & filters.Regex(MENU_REGEX),
                 _safe(menu_handler),
+            ),
+            # FIX: Upgrade buttons MUST be inside ConversationHandler so the
+            # returned AWAITING_TELEBIRR_PHOTO state is actually honoured.
+            # Previously these were only handled at group=1 (button_callback),
+            # which silently discarded the state transition.
+            CallbackQueryHandler(
+                _safe(handle_upgrade_button), pattern="^upgrade_"
             ),
         ],
         states={
@@ -358,7 +367,11 @@ def build_app():
                 MessageHandler(
                     filters.PHOTO | filters.Document.IMAGE,
                     _guard(handle_telebirr_photo),
-                )
+                ),
+                # Allow user to pick a different plan while in photo-waiting state
+                CallbackQueryHandler(
+                    _safe(handle_upgrade_button), pattern="^upgrade_"
+                ),
             ],
             AWAITING_FEATURE_SUGGESTION: [
                 MessageHandler(
@@ -418,6 +431,7 @@ def build_app():
         "invite",
         "review",
         "plan",
+        "upgrade",
         "status",
     ]:
         handler = (

@@ -1281,9 +1281,9 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data.startswith("upgrade_"):
-        await handle_upgrade_button(update, ctx)
-        return
+    # NOTE: upgrade_ callbacks are now handled inside the ConversationHandler
+    # (entry_points) so they properly transition to AWAITING_TELEBIRR_PHOTO.
+    # Do NOT handle them here (group=1) to avoid double-processing.
 
     if data.startswith("join_battle_"):
         battle_id = data.replace("join_battle_", "")
@@ -1591,6 +1591,12 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb.telegram_admin_keyboard(),
         )
         return
+
+
+async def cmd_myid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    \"\"\"Helps the user find their Telegram ID.\"\"\"
+    user_id = update.effective_user.id
+    await update.message.reply_text(f"Your Telegram ID is: `{user_id}`", parse_mode="Markdown")
 
 
 async def cmd_progress(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
