@@ -10,8 +10,7 @@ import hashlib
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Request, Header, Depends, APIRouter
-from starlette.requests import Request
+from fastapi import FastAPI, HTTPException, Request, Header, Depends, APIRouter, Response
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -240,16 +239,34 @@ async def root_health(request: Request):
     }
 
 @app.get("/telegram/webhook")
+@app.get("/telegram/webhook/")
 async def telegram_webhook_info(request: Request):
     """Diagnostic endpoint to check webhook status."""
-    logger.info(f"🔍 Webhook info requested from {request.client.host}")
+    logger.info(f"🔍 Webhook info requested from {request.client.host if request.client else 'unknown'}")
+    try:
+        bot_app = get_application()
+        info = await bot_app.bot.get_webhook_info()
+        return {
+            "url": info.url,
+            "pending_update_count": info.pending_update_count,
+            "last_error_message": info.last_error_message,
+            "last_error_date": info.last_error_date,
+            "detected_host": request.headers.get("host"),
+            "bot_initialized": bot_app is not None
+        }
+    except Exception as e:
+        logger.error(f"Error in webhook info: {e}")
+        return {"error": str(e)}
+
+@app.get("/debug/bot")
+async def debug_bot():
+    """Check if the bot application is initialized and running."""
     bot = get_application()
-    info = await bot.bot.get_webhook_info()
     return {
-        "url": info.url,
-        "pending_update_count": info.pending_update_count,
-        "last_error_message": info.last_error_message,
-        "detected_host": request.headers.get("host"),
+        "initialized": bot is not None,
+        "token_configured": bool(BOT_TOKEN),
+        "webhook_url": os.getenv("WEBHOOK_URL"),
+        "railway_env": os.getenv("RAILWAY_ENVIRONMENT")
     }
 
 # STEP 4 - Test route
@@ -259,25 +276,46 @@ async def test():
 
 # STEP 2 - The exact webhook handler requested
 @app.post("/telegram/webhook")
+@app.post("/telegram/webhook/")
 async def telegram_webhook(request: Request):
     logger.info("📨 Telegram POST received")
     try:
+        # 1. Capture raw body first for logging
+        body = await request.body()
+        body_str = body.decode(errors="replace")
+        logger.info(f"📦 Raw Update (first 500 chars): {body_str[:500]}")
+        
+        if not body:
+            logger.warning("⚠️ Received empty body in webhook")
+            return Response(status_code=200)
+
         bot_app = get_application()
         if bot_app is None:
-            logger.error("Application not initialized")
-            return JSONResponse({"ok": False}, status_code=200)
+            logger.error("🔴 Bot application not initialized")
+            return JSONResponse({"ok": False, "error": "Application not initialized"}, status_code=200)
         
-        body = await request.body()
-        logger.info(f"📦 Raw Update: {body.decode()[:200]}")
-        data = await request.json()
+        # 2. Parse JSON
+        import json
+        try:
+            data = json.loads(body_str)
+        except Exception as je:
+            logger.error(f"❌ Failed to parse JSON: {je}")
+            return Response(status_code=200)
+
+        # 3. Process Update
         update = Update.de_json(data, bot_app.bot)
-        logger.info(f"✅ Update parsed: {update.update_id}")
-        await bot_app.process_update(update)
-        logger.info(f"✅ Update processed: {update.update_id}")
-        return JSONResponse({"ok": True}, status_code=200)
+        if update:
+            logger.info(f"✅ Update parsed: {update.update_id} (type: {update.effective_chat.type if update.effective_chat else 'N/A'})")
+            await bot_app.process_update(update)
+            logger.info(f"✅ Update processed: {update.update_id}")
+        else:
+            logger.warning("⚠️ Update.de_json returned None")
+            
+        return Response(status_code=200)
     except Exception as e:
-        logger.error(f"❌ Webhook error: {e}", exc_info=True)
-        return JSONResponse({"ok": True}, status_code=200)
+        logger.error(f"❌ Webhook handling error: {e}", exc_info=True)
+        # Always return 200 to Telegram to stop retries if the error is unrecoverable
+        return Response(status_code=200)
 
 # (duplicate route removed — root_health is defined above at /health and /)
 
