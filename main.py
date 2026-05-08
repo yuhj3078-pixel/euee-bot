@@ -311,7 +311,7 @@ def build_app():
     bot_app = app
     return app
 
-async def main():
+def main():
     # The bot and scheduler are now initialized via server.py's @app.on_event("startup")
     # which is triggered when uvicorn starts.
     port = int(os.environ.get("PORT", 8080))
@@ -322,4 +322,4 @@ async def main():
     uvicorn.run(web_app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
