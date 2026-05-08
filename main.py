@@ -207,21 +207,62 @@ async def post_stop(application):
         logger.info("📅 Scheduler shut down.")
 
 
+# [Unified build_app is now located below in the FastAPI section]
+
+
+from fastapi import FastAPI, Request, HTTPException
+import uvicorn
+import hmac
+
+# ── FastAPI App for Railway Webhook + Health (STEP 4) ───────────────────────
+web_app = FastAPI()
+
+@web_app.get("/healthz")
+async def health():
+    return {"status": "ok"}
+
+@web_app.post("/webhook")
+async def telegram_webhook(request: Request):
+    # Verify secret if provided
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    webhook_secret = os.getenv("WEBHOOK_SECRET")
+    if webhook_secret and not hmac.compare_digest(secret or "", webhook_secret):
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        
+    payload = await request.json()
+    bot = build_app() # Get or build the app
+    update = Update.de_json(payload, bot.bot)
+    await bot.process_update(update)
+    return {"ok": True}
+
+# Import all routes from server.py to preserve features
+from server import admin_router
+web_app.include_router(admin_router)
+
+@web_app.post("/api/payments/chapa/callback")
+async def chapa_proxy(request: Request):
+    from server import chapa_webhook
+    return await chapa_webhook(request)
+
 def build_app():
+    global bot_app
+    if bot_app is not None:
+        return bot_app
+        
     # Fix Windows console emoji/Unicode output
     if sys.stdout.encoding != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).post_stop(post_stop).build()
 
-    # FIX: [global handler safety] — [ensure all user-facing handlers are exception-safe]
+    # (Previous handler registration logic remains same)
     def _guard(handler_func):
         return safe_handler(handler_func)
 
     def _safe(handler_func):
         return safe_handler(handler_func)
 
-    # Conversation handler for registration + subject selection + Q&A
+    # Conversation handler ...
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", _safe(start)),
@@ -268,81 +309,46 @@ def build_app():
         allow_reentry=True,
     )
 
-    # Global catch-all OUTSIDE conversation for users not in a state
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, _safe(lambda u, c: logger.info(f"📥 Global catch-all: {u.to_dict()}"))))
-
-    async def safe_log_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_ref = safe_user_ref(getattr(update.effective_user, "id", None))
-        if update.message and update.message.text:
-            text = (update.message.text or "").strip()
-            if text.startswith("/"):
-                logger.info("[MSG] user=%s command=%s", user_ref, text.split()[0])
-            else:
-                logger.info("[MSG] user=%s text_chars=%s", user_ref, len(text))
-        elif update.callback_query:
-            logger.info("[BTN] user=%s data=%s", user_ref, str(update.callback_query.data)[:80])
-
-    # Add a global message logger
-    async def log_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message and update.message.text:
-            print(f"📩 [MSG] From {update.effective_user.first_name} ({update.effective_user.id}): {update.message.text}")
-        elif update.callback_query:
-            print(f"🔘 [BTN] From {update.effective_user.first_name}: {update.callback_query.data}")
-
     app.add_handler(MessageHandler(filters.ALL, safe_log_messages), group=-1)
-
-    app.add_handler(conv)
-    # BUG 1 FIX: CallbackQueryHandler in group 1 to prevent double-catch with group 0 conv entry points.
     app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=1)
     app.add_handler(CallbackQueryHandler(_safe(handle_textbook_download), pattern="^dl_textbook_.*$"))
-    # Ensure these commands work even if stuck in a state
-    app.add_handler(CommandHandler("start", _safe(start)))
-    app.add_handler(CommandHandler("menu", _safe(start)))
-    app.add_handler(CommandHandler("progress", _safe(cmd_progress)))
-    app.add_handler(CommandHandler("leaderboard", _safe(cmd_leaderboard)))
-    app.add_handler(CommandHandler("radar", _safe(cmd_radar)))
-    app.add_handler(CommandHandler("predict", _safe(cmd_predict)))
-    app.add_handler(CommandHandler("id", _safe(cmd_id)))
-    app.add_handler(CommandHandler("demo_upgrade", _safe(cmd_demo_upgrade)))
-    app.add_handler(CommandHandler("admin", _safe(cmd_admin)))
-    app.add_handler(CommandHandler("manualupgrade", _safe(cmd_manual_upgrade)))
-    app.add_handler(CommandHandler("admin_build", _safe(cmd_admin_build)))
-    app.add_handler(CommandHandler("invite", _safe(cmd_invite)))
-    app.add_handler(CommandHandler("review", _safe(cmd_review_sheet)))
-    app.add_handler(CommandHandler("plan", _safe(cmd_plan)))
-    app.add_handler(CommandHandler("status", _safe(cmd_plan)))
+    
+    # Global commands
+    for cmd in ["start", "menu", "progress", "leaderboard", "radar", "predict", "id", "demo_upgrade", "admin", "manualupgrade", "admin_build", "invite", "review", "plan", "status"]:
+        handler = locals().get(f"cmd_{cmd}") or globals().get(f"cmd_{cmd}") or (start if cmd in ["start", "menu"] else None)
+        if handler:
+            app.add_handler(CommandHandler(cmd, _safe(handler)))
 
     app.add_error_handler(error_handler)
-    global bot_app
     bot_app = app
     return app
 
-def main():
+async def main():
+    # STEP 2 & 7 - WEBHOOK SETUP
     app = build_app()
-    print("🎓 ═══════════════════════════════════════")
-    print("🎓  ABEBE EUEE BOT — READY!")
-    print("🎓 ═══════════════════════════════════════")
-
-    # FIX: Use run_polling directly without manual loop management to avoid closure errors
-    dev_mode = os.getenv("DEV_MODE", "").lower() in ("1", "true", "yes")
-    webhook_url = os.getenv("WEBHOOK_URL", "").strip()
-    is_railway = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME"))
-    is_valid_webhook = webhook_url and not any(placeholder in webhook_url.lower() for placeholder in ["your-domain", "example.com", "localhost"])
-
-    if not dev_mode and webhook_url and is_valid_webhook:
-        port = int(os.getenv("PORT", "8080"))
-        print(f"🚀 Webhook mode on {port}")
-        app.run_webhook(listen="0.0.0.0", port=port, webhook_url=webhook_url, secret_token=os.getenv("WEBHOOK_SECRET"))
+    await app.initialize()
+    await app.start()
+    
+    port = int(os.environ.get("PORT", 8080))
+    webhook_url = os.environ.get("WEBHOOK_URL", "").rstrip("/")
+    
+    if webhook_url:
+        logger.info(f"🚀 Webhook mode at: {webhook_url}/webhook")
+        await app.bot.set_webhook(
+            url=f"{webhook_url}/webhook",
+            secret_token=os.getenv("WEBHOOK_SECRET"),
+            allowed_updates=["message", "callback_query"]
+        )
     else:
-        print("📡 Polling mode...")
-        app.run_polling(drop_pending_updates=True)
+        logger.info("📡 Polling mode (local/dev)...")
+        await app.updater.start_polling(drop_pending_updates=True)
 
+    # Start FastAPI with Uvicorn
+    config = uvicorn.Config(web_app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except (KeyboardInterrupt, SystemExit):
-        print("\n👋 Bot stopped by user.")
-    except Exception as e:
-        print(f"\n❌ Bot crashed: {e}")
+    asyncio.run(main())
