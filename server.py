@@ -154,8 +154,7 @@ async def on_startup():
     bot = get_application()
     try:
         await bot.initialize()
-        await bot.start()
-        logger.info("🤖 Bot initialized and started successfully.")
+        logger.info("🤖 Bot initialized successfully.")
     except Exception as exc:
         logger.error(f"🔴 BOT INITIALIZATION FAILED: {exc}")
         logger.error("The web server will stay up, but the Telegram bot will NOT respond.")
@@ -189,6 +188,8 @@ async def on_startup():
 
     if dev_mode:
         logger.info("🛠️ DEV_MODE detected — using long-polling for local testing.")
+        # Start the bot for polling
+        await bot.start()
         # Ensure any old webhook is removed so polling works
         await bot.bot.delete_webhook(drop_pending_updates=True)
         # Start the polling in the background (non-blocking)
@@ -220,10 +221,13 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     # FIX: Graceful shutdown on SIGTERM — finish processing updates before exiting.
-    bot = get_application()
-    logger.info("Shutting down PTB application...")
-    await bot.stop()
-    await bot.shutdown()
+    # Only stop/shutdown if the app was actually started (i.e., in polling mode)
+    dev_mode = os.getenv("DEV_MODE", "").lower() in ("1", "true", "yes")
+    if dev_mode:
+        bot = get_application()
+        logger.info("Shutting down PTB application...")
+        await bot.stop()
+        await bot.shutdown()
 
 
 # FIX: SIGTERM handler for Railway zero-downtime redeploys.
