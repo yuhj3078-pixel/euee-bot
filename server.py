@@ -174,12 +174,13 @@ async def on_startup():
             logger.error("WEBHOOK_SECRET not set — cannot register secure webhook.")
         else:
             final_webhook_url = f"{webhook_url}/telegram/webhook"
-            logger.info(f"📤 Registering webhook at: {final_webhook_url}")
-            await bot.bot.delete_webhook() # Clear any existing polling/webhook
+            masked_token = f"{BOT_TOKEN[:8]}...{BOT_TOKEN[-4:]}"
+            logger.info(f"📤 Registering webhook for bot {masked_token} at: {final_webhook_url}")
+            await bot.bot.delete_webhook()
             success = await bot.bot.set_webhook(url=final_webhook_url, secret_token=WEBHOOK_SECRET)
             if success:
                 info = await bot.bot.get_webhook_info()
-                logger.info(f"✅ Webhook successfully set. Telegram Info: URL={info.url}, Pending={info.pending_update_count}")
+                logger.info(f"✅ Webhook successfully set. URL={info.url}, Pending={info.pending_update_count}, Error={info.last_error_message}")
             else:
                 logger.error("❌ Failed to set Telegram webhook.")
 
