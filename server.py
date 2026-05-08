@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # FIX: Defer bot application build to startup so importing server.py never triggers
 # Firebase init, scheduler start, or Telegram token validation at import time.
-application = None
+application = None  # STEP 3 - Shared module-level instance
 
 
 def get_application():
@@ -180,7 +180,7 @@ async def on_startup():
             await bot.bot.delete_webhook()
             success = await bot.bot.set_webhook(url=final_webhook_url, secret_token=WEBHOOK_SECRET)
             if success:
-                info = await bot.bot.get_webhook_info()
+                info = await application.bot.get_webhook_info() # Use the shared instance
                 logger.info(f"✅ Webhook successfully set. URL={info.url}, Pending={info.pending_update_count}, Error={info.last_error_message}")
             else:
                 logger.error("❌ Failed to set Telegram webhook.")
@@ -252,13 +252,23 @@ async def telegram_webhook_info(request: Request):
         "detected_host": request.headers.get("host"),
     }
 
+# STEP 4 - Test route
+@app.get("/test")
+async def test():
+    return {"status": "route working"}
+
+# STEP 2 - The exact webhook handler requested
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-    data = await request.json()
-    application = get_application()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return {"ok": True}
+    try:
+        data = await request.json()
+        # STEP 3 - Uses the shared 'application' object
+        update = Update.de_json(data, application.bot)
+        await application.process_update(update)
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return {"ok": False}
 
 # (duplicate route removed — root_health is defined above at /health and /)
 
