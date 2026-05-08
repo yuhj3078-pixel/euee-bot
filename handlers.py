@@ -1281,7 +1281,6 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-
     if data.startswith("upgrade_"):
         await handle_upgrade_button(update, ctx)
         return
@@ -1825,8 +1824,13 @@ async def handle_boss_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    explanation = escape_markdown(existing.get('explanation', 'No explanation available.' if lang == "en" else 'ምንም ማብራሪያ አልተገኘም።'))
-    model_answer_text = escape_markdown(model_answer or 'N/A')
+    explanation = escape_markdown(
+        existing.get(
+            "explanation",
+            "No explanation available." if lang == "en" else "ምንም ማብራሪያ አልተገኘም።",
+        )
+    )
+    model_answer_text = escape_markdown(model_answer or "N/A")
     fail_msg = (
         f"Not quite. The correct answer was:\n\n{model_answer_text}\n\nExplanation: {explanation}\n\nStudy the idea once more and try again next Friday!"
         if lang == "en"
@@ -1872,20 +1876,32 @@ async def cmd_textbooks(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Shows a menu to select which textbook to download."""
     user = db.get_user(update.effective_user.id)
     lang = user.get("language", "en") if user else "en"
-    
+
     keyboard = [
-        [InlineKeyboardButton("📐 Math", callback_data="dl_textbook_math"),
-         InlineKeyboardButton("⚛️ Physics", callback_data="dl_textbook_physics")],
-        [InlineKeyboardButton("🧪 Chemistry", callback_data="dl_textbook_chemistry"),
-         InlineKeyboardButton("🧬 Biology", callback_data="dl_textbook_biology")],
-        [InlineKeyboardButton("🌍 Geography", callback_data="dl_textbook_geography"),
-         InlineKeyboardButton("📜 History", callback_data="dl_textbook_history")],
-        [InlineKeyboardButton("📖 English", callback_data="dl_textbook_english"),
-         InlineKeyboardButton("🚜 Agriculture", callback_data="dl_textbook_agriculture")],
-        [InlineKeyboardButton("💻 IT", callback_data="dl_textbook_it"),
-         InlineKeyboardButton("💹 Economics", callback_data="dl_textbook_economics")],
+        [
+            InlineKeyboardButton("📐 Math", callback_data="dl_textbook_math"),
+            InlineKeyboardButton("⚛️ Physics", callback_data="dl_textbook_physics"),
+        ],
+        [
+            InlineKeyboardButton("🧪 Chemistry", callback_data="dl_textbook_chemistry"),
+            InlineKeyboardButton("🧬 Biology", callback_data="dl_textbook_biology"),
+        ],
+        [
+            InlineKeyboardButton("🌍 Geography", callback_data="dl_textbook_geography"),
+            InlineKeyboardButton("📜 History", callback_data="dl_textbook_history"),
+        ],
+        [
+            InlineKeyboardButton("📖 English", callback_data="dl_textbook_english"),
+            InlineKeyboardButton(
+                "🚜 Agriculture", callback_data="dl_textbook_agriculture"
+            ),
+        ],
+        [
+            InlineKeyboardButton("💻 IT", callback_data="dl_textbook_it"),
+            InlineKeyboardButton("💹 Economics", callback_data="dl_textbook_economics"),
+        ],
     ]
-    
+
     if lang == "en":
         msg = (
             "📚 **Abebe's Library**\n\n"
@@ -1898,39 +1914,46 @@ async def cmd_textbooks(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "ኦፊሴላዊውን የ12ኛ ክፍል መማሪያ መጽሐፍ ለማውረድ ከታች ትምህርት ይምረጡ።\n\n"
             "⚠️ *ማሳሰቢያ፡ አንዳንድ ፋይሎች ትልቅ (ከ100MB በላይ) ስለሆኑ ለመላክ ጥቂት ጊዜ ሊወስዱ ይችላሉ።*"
         )
-        
+
     await update.message.reply_text(
-        msg, 
-        parse_mode="Markdown", 
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 async def handle_textbook_download(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     subject_code = query.data.replace("dl_textbook_", "")
     textbooks_dir = os.path.join(os.path.dirname(__file__), "textbooks")
-    
+
     # Map subject codes to actual filenames found in directory
-    files = [f for f in os.listdir(textbooks_dir) if os.path.isfile(os.path.join(textbooks_dir, f))]
+    files = [
+        f
+        for f in os.listdir(textbooks_dir)
+        if os.path.isfile(os.path.join(textbooks_dir, f))
+    ]
     target_file = None
-    
+
     # Simple keyword match
     for f in files:
         if subject_code.lower() in f.lower():
             target_file = f
             break
-            
+
     if not target_file:
-        await query.edit_message_text(f"❌ Sorry, the {subject_code} textbook is not available yet.")
+        await query.edit_message_text(
+            f"❌ Sorry, the {subject_code} textbook is not available yet."
+        )
         return
 
     file_path = os.path.join(textbooks_dir, target_file)
     file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-    
-    await query.edit_message_text(f"⏳ Preparing **{target_file}** ({file_size_mb:.1f} MB)...\nThis may take a minute.")
-    
+
+    await query.edit_message_text(
+        f"⏳ Preparing **{target_file}** ({file_size_mb:.1f} MB)...\nThis may take a minute."
+    )
+
     try:
         with open(file_path, "rb") as fh:
             await query.message.reply_document(
@@ -1940,7 +1963,9 @@ async def handle_textbook_download(update: Update, ctx: ContextTypes.DEFAULT_TYP
             )
     except Exception as e:
         logger.error(f"Failed to send {target_file}: {e}")
-        await query.message.reply_text("❌ Failed to send file. It might be too large for the Telegram Bot API (Max 50MB). Please try a smaller resource or contact admin.")
+        await query.message.reply_text(
+            "❌ Failed to send file. It might be too large for the Telegram Bot API (Max 50MB). Please try a smaller resource or contact admin."
+        )
 
 
 async def cmd_suggest_feature(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1961,7 +1986,9 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Pass 3.8/4.2: Strict single-subscription enforcement for paid plans only
     user = db.get_user(query.from_user.id)
     current_tier = db.normalize_tier(user.get("tier") if user else None)
-    has_active_paid_plan = current_tier in {"pro", "max"} and db.is_subscription_active(query.from_user.id)
+    has_active_paid_plan = current_tier in {"pro", "max"} and db.is_subscription_active(
+        query.from_user.id
+    )
     if has_active_paid_plan:
         lang = user.get("language", "en") if user else "en"
         msg = (
@@ -1980,7 +2007,9 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db.update_user(
             query.from_user.id,
             {
-                "name": query.from_user.first_name or query.from_user.username or "Student",
+                "name": query.from_user.first_name
+                or query.from_user.username
+                or "Student",
                 "language": user.get("language", "en") if user else "en",
             },
         )
@@ -2300,6 +2329,10 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # Notify both admins with photo + approve/reject buttons
     plan_label = tier.replace("_", " ").upper()
+
+    # DEBUG: Log admin IDs being notified
+    logger.info(f"[PAYMENT] Notifying admins: ADMIN_IDS={ADMIN_IDS}")
+
     for target_admin in ADMIN_IDS:
         if not target_admin or target_admin == 0:
             continue
@@ -2324,8 +2357,20 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown",
                 reply_markup=kb.admin_approval_keyboard(tx_id),
             )
+            logger.info(f"[PAYMENT] Successfully sent to admin {target_admin}")
         except Exception as e:
-            logger.error(f"Failed to notify admin {target_admin}: {e}")
+            logger.exception(f"Failed to notify admin {target_admin}: {e}")
+            # Try sending as text message if photo fails
+            try:
+                await ctx.bot.send_message(
+                    chat_id=target_admin,
+                    text=f"🔔 NEW UPGRADE REQUEST - Photo failed to send\n\nTX: {tx_id}\nUser: {update.effective_user.first_name}",
+                    reply_markup=kb.admin_approval_keyboard(tx_id),
+                )
+            except Exception as e2:
+                logger.exception(
+                    f"Also failed to send text to admin {target_admin}: {e2}"
+                )
 
     return ConversationHandler.END
 
