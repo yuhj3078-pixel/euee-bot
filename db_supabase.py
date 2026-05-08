@@ -540,9 +540,44 @@ def record_answer(telegram_id: int, subject: str, is_correct: bool, topic: str =
                 supabase.table("wrong_questions").insert(data).execute()
             except Exception as e:
                 logger.warning(f"Could not save wrong question (table might not exist): {e}")
-        
-        # Update user total count (handled in increment_questions usually, but good for safety)
-        pass
+        # Also update aggregate counters on the user record so Progress shows real data
+        user = get_user(telegram_id) or {}
+
+        score_by_subject = user.get("score_by_subject", {}) or {}
+        subject_correct = user.get("subject_correct", {}) or {}
+        subject_wrong = user.get("subject_wrong", {}) or {}
+        subject_attempts = user.get("subject_attempts", {}) or {}
+        topic_perf = user.get("topic_performance", {}) or {}
+
+        score_by_subject[subject] = score_by_subject.get(subject, 0) + (1 if is_correct else 0)
+        subject_correct[subject] = subject_correct.get(subject, 0) + (1 if is_correct else 0)
+        subject_wrong[subject] = subject_wrong.get(subject, 0) + (0 if is_correct else 1)
+        subject_attempts[subject] = subject_attempts.get(subject, 0) + 1
+
+        safe_topic = (topic or "General").replace(".", "-")
+        subject_topic = topic_perf.setdefault(subject, {})
+        topic_row = subject_topic.setdefault(safe_topic, {"correct": 0, "attempts": 0})
+        topic_row["correct"] = topic_row.get("correct", 0) + (1 if is_correct else 0)
+        topic_row["attempts"] = topic_row.get("attempts", 0) + 1
+
+        updates = {
+            "score_by_subject": score_by_subject,
+            "subject_correct": subject_correct,
+            "subject_wrong": subject_wrong,
+            "subject_attempts": subject_attempts,
+            "topic_performance": topic_perf,
+            "correct_total": user.get("correct_total", 0) + (1 if is_correct else 0),
+            "wrong_total": user.get("wrong_total", 0) + (0 if is_correct else 1),
+            "study_minutes_today": user.get("study_minutes_today", 0) + 2,
+            "study_minutes_total": user.get("study_minutes_total", 0) + 2,
+            "updated_at": _now(),
+        }
+
+        # Persist aggregates back to the users table
+        try:
+            update_user(telegram_id, updates)
+        except Exception:
+            logger.exception("Failed to update user aggregates for %s", safe_user_ref(telegram_id))
     except Exception as e:
         logger.error(f"Error recording answer: {e}")
 
