@@ -1281,7 +1281,10 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # upgrade_ logic moved to handle_upgrade_button
+
+    if data.startswith("upgrade_"):
+        await handle_upgrade_button(update, ctx)
+        return
 
     if data.startswith("join_battle_"):
         battle_id = data.replace("join_battle_", "")

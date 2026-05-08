@@ -177,12 +177,11 @@ SUBJECTS = {
     CHOOSE_LANGUAGE,
     CHOOSE_SUBJECT,
     ASKING_QUESTION,
-    IN_EXAM,
     CONFESSION_BOX,
     BOSS_FIGHT,
     AWAITING_TELEBIRR_PHOTO,
     AWAITING_FEATURE_SUGGESTION,
-) = range(8)
+) = range(7)
 
 # ── Abebe persona (system prompt) ────────────────────────────────────────────
 ABEBE_SYSTEM_EN = """You are Abebe, a wise, warm, funny Ethiopian tutor helping Grade 12 students 
