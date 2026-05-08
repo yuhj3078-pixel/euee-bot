@@ -1972,6 +1972,16 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(msg, parse_mode="Markdown")
         return ConversationHandler.END
 
+    # Make sure the Telegram user exists before writing the payment attempt row.
+    if not db.get_user(query.from_user.id):
+        db.update_user(
+            query.from_user.id,
+            {
+                "name": query.from_user.first_name or query.from_user.username or "Student",
+                "language": user.get("language", "en") if user else "en",
+            },
+        )
+
     ctx.user_data["pending_tier"] = plan_id
     from config import TIER_PRICES
 
