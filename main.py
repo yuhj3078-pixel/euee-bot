@@ -328,7 +328,7 @@ def build_app():
         entry_points=[
             CommandHandler("start", _safe(start)),
             CommandHandler("menu", _safe(start)),
-            CommandHandler("myid", _safe(cmd_myid)),
+            CommandHandler("myid", _safe(cmd_id)),
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND & filters.Regex(MENU_REGEX),
                 _safe(menu_handler),
