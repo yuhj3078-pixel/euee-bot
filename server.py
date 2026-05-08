@@ -197,23 +197,46 @@ def _handle_sigterm(signum, frame):
 
 signal.signal(signal.SIGTERM, _handle_sigterm)
 
+@app.get("/telegram/webhook")
+async def telegram_webhook_info():
+    """Diagnostic endpoint to check webhook status."""
+    bot = _get_ptb_app()
+    info = await bot.bot.get_webhook_info()
+    return {
+        "url": info.url,
+        "has_custom_certificate": info.has_custom_certificate,
+        "pending_update_count": info.pending_update_count,
+        "last_error_date": info.last_error_date,
+        "last_error_message": info.last_error_message,
+        "max_connections": info.max_connections,
+        "ip_address": info.ip_address,
+    }
+
 @app.post("/telegram/webhook")
-@app.post("/webhook/telegram/webhook") # Fallback for misconfigured env vars
+@app.post("/telegram/webhook/") # Handle trailing slash
+@app.post("/webhook/telegram/webhook")
 async def telegram_webhook(request: Request):
+    logger.info("📩 Incoming webhook request received")
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    # FIX: Strict secret check — reject if no secret configured or mismatch.
+    
     if not WEBHOOK_SECRET:
-        logger.error("WEBHOOK_SECRET not configured — rejecting all webhook requests.")
+        logger.error("❌ WEBHOOK_SECRET not configured in environment variables.")
         raise HTTPException(status_code=500, detail="Webhook secret not configured")
+        
     if not hmac.compare_digest(secret or "", WEBHOOK_SECRET):
-        logger.warning("Invalid webhook secret received")
+        logger.warning(f"⚠️ Invalid webhook secret received (Header: {secret[:4]}... vs Config: {WEBHOOK_SECRET[:4]}...)")
         raise HTTPException(status_code=401, detail="Invalid secret token")
 
-    bot = _get_ptb_app()
-    payload = await request.json()
-    update = Update.de_json(data=payload, bot=bot.bot)
-    await bot.update_queue.put(update)
-    return {"ok": True}
+    try:
+        payload = await request.json()
+        logger.debug(f"Payload: {payload}")
+        bot = _get_ptb_app()
+        update = Update.de_json(data=payload, bot=bot.bot)
+        await bot.update_queue.put(update)
+        return {"ok": True}
+    except Exception as exc:
+        logger.error(f"💥 Error processing webhook: {exc}")
+        return {"ok": False, "error": str(exc)}
 
 @app.get("/")
 async def root_health():
