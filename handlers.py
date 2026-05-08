@@ -1363,6 +1363,80 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data.startswith("mcq_"):
+        answer = data.replace("mcq_", "").upper()
+        if ctx.user_data.get("exam_active"):
+            await _resolve_exam_answer(query, ctx, user, answer)
+            return
+        if ctx.user_data.get("active_battle"):
+            battle_id = ctx.user_data.get("active_battle")
+            battle = db.get_battle(battle_id) if battle_id else None
+            if not battle or battle.get("status") == "done":
+                _clear_battle_state(ctx)
+                await query.edit_message_text("That battle is no longer active.")
+                return
+            await _resolve_battle_answer(query.from_user.id, answer, battle, ctx)
+            await query.edit_message_text("Your battle answer has been submitted.")
+            return
+
+        q = ctx.user_data.get("current_q", {})
+        subject = user.get("chosen_subject", "math")
+        correct = q.get("answer", "")
+        is_correct = answer == correct
+        topic = q.get("topic", "General")
+        db.record_answer(query.from_user.id, subject, is_correct, topic, question_data=q)
+        explanation = q.get("explanation", "")
+        
+        strategies = {
+            "math": "💡 **Abebe's Math Strategy:** For EUEE Calculus questions, try 'Plugging and Chugging'!",
+            "physics": "💡 **Abebe's Physics Strategy:** Always check your units!",
+        }
+        tip_text = strategies.get(subject.lower(), "💡 **Exam Tip:** Read the question carefully.")
+        
+        result_text = "✅ Correct." if is_correct else f"❌ Not quite. The answer was {correct}."
+        result_text = f"{result_text}\n\n**Explanation:**\n{explanation}\n\n{tip_text}"
+        db.update_user(query.from_user.id, {"last_explanation": result_text[:1000]})
+        try:
+            await query.edit_message_text(result_text, reply_markup=kb.after_answer_keyboard(lang), parse_mode="Markdown")
+        except:
+            await query.edit_message_text(result_text, reply_markup=kb.after_answer_keyboard(lang))
+        return
+
+    if data.startswith("exam_"):
+        count = int(data.replace("exam_", ""))
+        subject = ctx.user_data.get("exam_subject") or user.get("chosen_subject", "math")
+        ctx.user_data["exam_active"] = True
+        ctx.user_data["exam_total"] = count
+        ctx.user_data["exam_score"] = 0
+        ctx.user_data["exam_current"] = 0
+        ctx.user_data["exam_start"] = time.time()
+        ctx.user_data["exam_subject"] = subject
+        await ctx.bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
+        q = await run_blocking(ai.generate_exam_question, subject, lang=lang)
+        ctx.user_data["current_q"] = q
+        await query.edit_message_text(
+            _format_question(q, f"🚀 **Mock Exam Started** ({count} Questions)\nSubject: {_subject_name(subject)}\nQuestion 1/{count}"),
+            reply_markup=kb.mcq_keyboard(q.get("options", {})),
+            parse_mode="Markdown"
+        )
+        return
+
+    if data.startswith("join_battle_"):
+        battle_id = data.replace("join_battle_", "")
+        battle = db.join_battle(battle_id, query.from_user.id)
+        if not battle:
+            await query.edit_message_text("This battle is no longer available.")
+            return
+        q = _battle_payload_from_record(battle)
+        ctx.user_data["active_battle"] = battle_id
+        ctx.user_data["battle_start"] = time.time()
+        ctx.user_data["current_q"] = q
+        await query.edit_message_text(
+            _format_question(q, "Battle joined. Answer using the buttons below."),
+            reply_markup=kb.mcq_keyboard(q.get("options", {})),
+        )
+        return
+
     if data.startswith("flip_"):
         index = int(data.replace("flip_", ""))
         cards = ctx.user_data.get("flashcards", [])
@@ -1398,20 +1472,14 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("chapter_"):
         subject, chapter = data.replace("chapter_", "").rsplit("_", 1)
-        await ctx.bot.send_chat_action(
-            chat_id=query.message.chat_id, action=ChatAction.TYPING
-        )
-        summary = await run_blocking(
-            notes.generate_chapter_summary, subject, int(chapter), lang
-        )
+        await ctx.bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
+        summary = await run_blocking(notes.generate_chapter_summary, subject, int(chapter), lang)
         await query.edit_message_text(summary)
         return
 
     if data.startswith("fullnotes_"):
         subject = data.replace("fullnotes_", "")
-        await ctx.bot.send_chat_action(
-            chat_id=query.message.chat_id, action=ChatAction.TYPING
-        )
+        await ctx.bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
         notes_text = await notes.generate_study_notes(subject, lang)
         preview = (notes_text or "")[:3800]
         if len(notes_text) > 3800:
@@ -1423,155 +1491,52 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parts = data.split("_")
         subject = parts[1]
         model_index = int(parts[2])
-        user = db.get_user(query.from_user.id)
-        tier = db.normalize_tier(user.get("tier")) if user else "free"
-
+        tier = db.normalize_tier(user.get("tier"))
         limit = 5 if tier == "pro" else 50 if tier == "max" else 0
         if model_index > limit:
-            await query.answer(
-                f"Model {model_index} is not available on your {tier.capitalize()} tier. Upgrade for more!"
-            )
+            await query.answer(f"Model {model_index} not available on {tier.capitalize()} tier.")
             return
-
-        ctx.user_data["exam_active"] = True
-        ctx.user_data["exam_total"] = 100
-        ctx.user_data["exam_score"] = 0
-        ctx.user_data["exam_current"] = 0
-        ctx.user_data["exam_start"] = time.time()
-        ctx.user_data["exam_subject"] = subject
-        ctx.user_data["model_index"] = model_index
-        # Consolidated start message + question 1 for better UX
-        await query.edit_message_text(
-            f"⏳ Preparing Model Exam {model_index} for {_subject_name(subject)}..."
-        )
-
-        q = await run_blocking(
-            ai.generate_exam_question, subject, lang=lang, model_index=model_index
-        )
+        ctx.user_data.update({"exam_active": True, "exam_total": 100, "exam_score": 0, "exam_current": 0, "exam_start": time.time(), "exam_subject": subject, "model_index": model_index})
+        await query.edit_message_text(f"⏳ Preparing Model Exam {model_index} for {_subject_name(subject)}...")
+        q = await run_blocking(ai.generate_exam_question, subject, lang=lang, model_index=model_index)
         ctx.user_data["current_q"] = q
-
-        start_msg = f"🏆 **Starting Model Exam {model_index}** for {_subject_name(subject)}\nThis full-length exam has 100 questions. Good luck!\n\nQuestion 1/100"
         await query.edit_message_text(
-            _format_question(q, start_msg),
+            _format_question(q, f"🏆 **Starting Model Exam {model_index}** for {_subject_name(subject)}\nQuestion 1/100"),
             reply_markup=kb.mcq_keyboard(q.get("options", {})),
-            parse_mode="Markdown",
+            parse_mode="Markdown"
         )
         return
 
-
     if data == "admin_view_stats":
         if query.from_user.id not in ADMIN_IDS:
-            await query.answer("⛔ You are not authorized.", show_alert=True)
+            await query.answer("⛔ Unauthorized")
             return
         await query.answer("Fetching stats...")
-        # FIX: Batch-process users to avoid OOM with 50k+ users.
-        total = free = pro = max_tier = 0
-        try:
-            user_query = db.db.collection("users").limit(500)
-            last_doc = None
-            while True:
-                if last_doc:
-                    user_query = user_query.start_after(last_doc)
-                docs = list(user_query.stream())
-                if not docs:
-                    break
-                for doc in docs:
-                    total += 1
-                    t = doc.to_dict().get("tier", "free")
-                    if t == "free":
-                        free += 1
-                    elif t == "pro":
-                        pro += 1
-                    elif t == "max":
-                        max_tier += 1
-                last_doc = docs[-1]
-                await asyncio.sleep(0)  # yield control
-        except Exception as exc:
-            logger.error("admin_view_stats failed: %s", exc)
-            await query.edit_message_text(
-                "❌ Failed to fetch stats. Check logs.",
-                reply_markup=kb.telegram_admin_keyboard(),
-            )
-            return
-
         pending = len(db.get_pending_payments())
-        revenue = (pro * 100) + (max_tier * 200)
-
-        stats_msg = (
-            f"📊 **BOT STATISTICS**\n\n"
-            f"👥 **Total Students:** {total}\n"
-            f"🆓 **Free Tier:** {free}\n"
-            f"⭐ **Pro Tier:** {pro}\n"
-            f"💎 **Max Tier:** {max_tier}\n"
-            f"💰 **Est. Monthly Revenue:** {revenue} ETB\n"
-            f"⏳ **Pending Upgrades:** {pending}\n"
-        )
-        await query.edit_message_text(
-            stats_msg, parse_mode="Markdown", reply_markup=kb.telegram_admin_keyboard()
-        )
+        await query.edit_message_text(f"📊 **STATS**\n\nPending: {pending}", reply_markup=kb.telegram_admin_keyboard())
         return
 
     if data == "admin_view_pending":
         if query.from_user.id not in ADMIN_IDS:
-            await query.answer("⛔ You are not authorized.", show_alert=True)
+            await query.answer("⛔ Unauthorized")
             return
-        await query.answer("Fetching pending upgrades...")
         pending = db.get_pending_payments()
         if not pending:
-            await query.edit_message_text(
-                "✅ No pending upgrades.", reply_markup=kb.telegram_admin_keyboard()
-            )
+            await query.edit_message_text("✅ No pending upgrades.", reply_markup=kb.telegram_admin_keyboard())
             return
-
-        for p in pending[:5]:  # Show top 5
+        for p in pending[:5]:
             tx_id = p.get("tx_id") or p.get("transaction_id")
-            user_name = p.get("username")
-            plan = p.get("plan_requested", "unknown").upper()
-            msg = (
-                f"🔔 **PENDING UPGRADE**\n"
-                f"👤 {user_name} (`{p.get('telegram_id')}`)\n"
-                f"💎 Plan: {plan}\n"
-                f"🧾 TX: `{tx_id}`\n"
-            )
-            if p.get("telegram_id") is not None:
-                msg = msg.replace(
-                    str(p.get("telegram_id")), safe_user_ref(p.get("telegram_id"))
-                )
-            await ctx.bot.send_message(
-                chat_id=query.from_user.id,
-                text=msg,
-                parse_mode="Markdown",
-                reply_markup=kb.admin_approval_keyboard(tx_id),
-            )
-
-        text = (
-            f"Showing {min(5, len(pending))} of {len(pending)} pending requests above."
-        )
-        await query.edit_message_text(text, reply_markup=kb.telegram_admin_keyboard())
+            await ctx.bot.send_message(chat_id=query.from_user.id, text=f"🔔 PENDING: {p.get('username')} ({tx_id})", reply_markup=kb.admin_approval_keyboard(tx_id))
+        await query.edit_message_text(f"Showing {min(5, len(pending))} requests.", reply_markup=kb.telegram_admin_keyboard())
         return
 
     if data == "admin_view_suggestions":
-        # FIX: Allow both configured admins to inspect feature suggestions for parity with other admin actions.
         if query.from_user.id not in ADMIN_IDS:
-            await query.answer("⛔ You are not authorized.", show_alert=True)
+            await query.answer("⛔ Unauthorized")
             return
-        await query.answer("Fetching suggestions...")
         suggs = db.get_feature_suggestions()
-        if not suggs:
-            await query.edit_message_text(
-                "No suggestions yet.", reply_markup=kb.telegram_admin_keyboard()
-            )
-            return
-
-        lines = ["💡 **RECENT SUGGESTIONS**\n"]
-        for s in suggs[:10]:
-            lines.append(f"👤 **{s.get('username')}**: {s.get('suggestion')}\n")
-
-        await query.edit_message_text(
-            "\n".join(lines),
-            parse_mode="Markdown",
-            reply_markup=kb.telegram_admin_keyboard(),
-        )
+        lines = [f"👤 {s.get('username')}: {s.get('suggestion')}" for s in suggs[:10]]
+        await query.edit_message_text("💡 **SUGGESTIONS**\n" + "\n".join(lines), reply_markup=kb.telegram_admin_keyboard())
         return
 
 
