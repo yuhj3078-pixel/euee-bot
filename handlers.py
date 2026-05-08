@@ -1459,10 +1459,6 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
 
-        except Exception:
-            pass
-        return
-
     if data == "admin_view_stats":
         if query.from_user.id not in ADMIN_IDS:
             await query.answer("⛔ You are not authorized.", show_alert=True)

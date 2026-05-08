@@ -180,6 +180,8 @@ async def on_startup():
         db.init_database()
         test_user = db.get_user(1)  # Non-existent user, just to test connection
         logger.info("Database connection test passed.")
+        print(f"📊 Dashboard available at: {BASE_WEB_URL}/admin")
+        print(f"🔑 Admin Token is set: {'YES' if ADMIN_TOKEN else 'NO'}")
     except Exception as exc:
         logger.error(f"🔴 DATABASE CONNECTION TEST FAILED: {exc}")
         logger.error("The app will start, but database-dependent features will fail. Check Supabase credentials.")
