@@ -205,8 +205,6 @@ async def on_startup():
         logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
     else:
         logger.error("❌ Failed to set webhook")
-    except Exception as exc:
-        logger.error(f"❌ Failed to start scheduler: {exc}")
 
 @app.on_event("shutdown")
 async def on_shutdown():
