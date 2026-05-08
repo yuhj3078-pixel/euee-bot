@@ -265,8 +265,14 @@ async def telegram_webhook(request: Request):
 
 @app.get("/")
 @app.get("/health")
-async def root_health():
-    return {"status": "ok", "service": "Abebe EUEE Bot", "version": "2.0"}
+async def root_health(request: Request):
+    return {
+        "status": "ok",
+        "service": "Abebe EUEE Bot",
+        "version": "2.0",
+        "detected_url": str(request.url),
+        "headers": {k: v for k, v in request.headers.items() if "auth" not in k.lower() and "key" not in k.lower()}
+    }
 
 # ── Chapa Payment Webhook (Automated Real-Time Upgrade) ─────────────────────
 @app.post("/api/payments/chapa/callback")
