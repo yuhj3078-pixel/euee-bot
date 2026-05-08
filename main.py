@@ -258,12 +258,19 @@ def build_app():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, _guard(handle_suggestion))
             ],
         },
-        fallbacks=[CommandHandler("start", _safe(start)), CommandHandler("menu", _safe(start))],
+        fallbacks=[
+            CommandHandler("menu", _safe(start)),
+            MessageHandler(filters.ALL, _safe(lambda u, c: logger.info(f"📥 Handled by fallback: {u.to_dict()}")))
+        ],
         per_user=True,
         per_chat=True,
         per_message=False,
         allow_reentry=True,
     )
+
+    # Global catch-all OUTSIDE conversation for users not in a state
+    app.add_handler(conv)
+    app.add_handler(MessageHandler(filters.ALL, _safe(lambda u, c: logger.info(f"📥 Global catch-all: {u.to_dict()}"))))
 
     async def safe_log_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_ref = safe_user_ref(getattr(update.effective_user, "id", None))

@@ -47,6 +47,8 @@ if REDIS_URL:
         r = redis.from_url(REDIS_URL, decode_responses=True)
         r.ping()
         logger.info("📡 Connected to Redis for rate limiting.")
+    except ImportError:
+        logger.warning("⚠️ Redis package not installed. Falling back to in-memory limiting.")
     except Exception as e:
         logger.warning(f"⚠️ Redis connection failed: {e}. Falling back to in-memory limiting.")
         r = None
@@ -175,17 +177,22 @@ async def on_startup():
 
     # FIX: Start background scheduler here when running as the Railway web service.
     # main.py's post_init skips scheduler in webhook/Railway mode to avoid duplicates.
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
-    from main import daily_reminder, panic_reminder, weekly_parent_report, reset_weekly_counters
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(daily_reminder, "cron", hour=4, minute=0, args=[bot])
-    scheduler.add_job(panic_reminder, "cron", hour=9, minute=0, args=[bot], id="panic_noon")
-    scheduler.add_job(panic_reminder, "cron", hour=17, minute=0, args=[bot], id="panic_evening")
-    scheduler.add_job(weekly_parent_report, "cron", day_of_week="sun", hour=15, minute=0, args=[bot])
-    scheduler.add_job(reset_weekly_counters, "cron", day_of_week="mon", hour=21, minute=0, args=[bot])
-    scheduler.add_job(db.check_and_expire_subscriptions, "interval", hours=1, args=[bot])
-    scheduler.start()
-    logger.info("📅 Scheduler started in server.py (Railway mode).")
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from main import daily_reminder, panic_reminder, weekly_parent_report, reset_weekly_counters
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(daily_reminder, "cron", hour=4, minute=0, args=[bot])
+        scheduler.add_job(panic_reminder, "cron", hour=9, minute=0, args=[bot], id="panic_noon")
+        scheduler.add_job(panic_reminder, "cron", hour=17, minute=0, args=[bot], id="panic_evening")
+        scheduler.add_job(weekly_parent_report, "cron", day_of_week="sun", hour=15, minute=0, args=[bot])
+        scheduler.add_job(reset_weekly_counters, "cron", day_of_week="mon", hour=21, minute=0, args=[bot])
+        scheduler.add_job(db.check_and_expire_subscriptions, "interval", hours=1, args=[bot])
+        scheduler.start()
+        logger.info("📅 Scheduler started in server.py (Railway mode).")
+    except ImportError:
+        logger.error("❌ apscheduler not installed. Background jobs will NOT run.")
+    except Exception as exc:
+        logger.error(f"❌ Failed to start scheduler: {exc}")
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -240,7 +247,8 @@ async def telegram_webhook(request: Request):
         logger.debug(f"Payload: {payload}")
         bot = _get_ptb_app()
         update = Update.de_json(data=payload, bot=bot.bot)
-        await bot.update_queue.put(update)
+        # Use process_update directly for faster, more reliable webhook response
+        await bot.process_update(update)
         return {"ok": True}
     except Exception as exc:
         logger.error(f"💥 Error processing webhook: {exc}")
