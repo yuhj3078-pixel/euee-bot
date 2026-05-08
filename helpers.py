@@ -19,6 +19,19 @@ def sanitize_input(text: str) -> str:
     return text
 
 
+def escape_markdown(text: str) -> str:
+    """Escape special Markdown characters for Telegram Markdown mode.
+    Escapes: _ * [ ] ( ) ~ ` > # + - = | { } . ! 
+    """
+    if not text:
+        return ""
+    # Escape all special Markdown characters by prefixing with backslash
+    special_chars = r'_*[]()~`>#+-=|{}.!'
+    for char in special_chars:
+        text = text.replace(char, '\\' + char)
+    return text
+
+
 def safe_user_ref(user_id: int | str | None) -> str:
     """Return a masked user reference safe for logs and admin alerts."""
     if user_id in (None, ""):

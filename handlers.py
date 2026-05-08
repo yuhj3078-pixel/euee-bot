@@ -240,11 +240,14 @@ def _format_question(q: dict, prefix: str | None = None) -> str:
     if prefix:
         lines.append(prefix)
         lines.append("")
-    lines.append(q.get("question", "Question not ready."))
+    # Escape Markdown special characters to prevent parsing errors
+    question_text = escape_markdown(q.get("question", "Question not ready."))
+    lines.append(question_text)
     options = q.get("options", {})
     for key in ["A", "B", "C", "D"]:
         if key in options:
-            lines.append(f"{key}. {options[key]}")
+            option_text = escape_markdown(options[key])
+            lines.append(f"{key}. {option_text}")
     return "\n".join(lines)
 
 
@@ -874,7 +877,7 @@ async def handle_question(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db.record_answer(
             update.effective_user.id, subj, is_correct, topic, question_data=q
         )
-        explanation = q.get("explanation", "No explanation available.")
+        explanation = escape_markdown(q.get("explanation", "No explanation available."))
         tip_text = (
             "💡 **Exam Tip:** Read the question carefully to identify exactly what is being asked before jumping to calculations."
             if lang == "en"
@@ -952,7 +955,7 @@ async def _resolve_exam_answer(
     feedback = (
         "Correct." if is_correct else f"Not quite. The correct answer was {correct}."
     )
-    explanation = q.get("explanation", "")
+    explanation = escape_markdown(q.get("explanation", ""))
 
     if current_index >= total:
         percentage = round((exam_score / total) * 100, 1) if total else 0
@@ -1819,10 +1822,12 @@ async def handle_boss_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
+    explanation = escape_markdown(existing.get('explanation', 'No explanation available.' if lang == "en" else 'ምንም ማብራሪያ አልተገኘም።'))
+    model_answer_text = escape_markdown(model_answer or 'N/A')
     fail_msg = (
-        f"Not quite. The correct answer was:\n\n{model_answer or 'N/A'}\n\nExplanation: {existing.get('explanation', 'No explanation available.')}\n\nStudy the idea once more and try again next Friday!"
+        f"Not quite. The correct answer was:\n\n{model_answer_text}\n\nExplanation: {explanation}\n\nStudy the idea once more and try again next Friday!"
         if lang == "en"
-        else f"አልተሳካም። ትክክለኛው መልስ፡\n\n{model_answer or 'N/A'}\n\nማብራሪያ፡ {existing.get('explanation', 'ምንም ማብራሪያ አልተገኘም።')}\n\nሀሳቡን ደግመህ ተመልከት እና በሚቀጥለው አርብ ሞክር።"
+        else f"አልተሳካም። ትክክለኛው መልስ፡\n\n{model_answer_text}\n\nማብራሪያ፡ {explanation}\n\nሀሳቡን ደግመህ ተመልከት እና በሚቀጥለው አርብ ሞክር።"
     )
     await update.message.reply_text(
         fail_msg,
