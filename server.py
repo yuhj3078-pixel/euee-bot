@@ -170,6 +170,30 @@ async def on_startup():
             webhook_url = webhook_url[:-17]
             
         logger.info("Setting webhook to %s/telegram/webhook", webhook_url)
+    
+    # ── Background Worker / Scheduler Hardening ────────────────────────────────
+    # FIX: Ensure scheduler only starts ONCE.
+    if getattr(app, "scheduler_started", False):
+        logger.info("📅 Scheduler already running. Skipping duplicate start.")
+    else:
+        try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+            from main import daily_reminder, panic_reminder, weekly_parent_report, reset_weekly_counters
+            scheduler = AsyncIOScheduler()
+            scheduler.add_job(daily_reminder, "cron", hour=4, minute=0, args=[bot])
+            scheduler.add_job(panic_reminder, "cron", hour=9, minute=0, args=[bot], id="panic_noon")
+            scheduler.add_job(panic_reminder, "cron", hour=17, minute=0, args=[bot], id="panic_evening")
+            scheduler.add_job(weekly_parent_report, "cron", day_of_week="sun", hour=15, minute=0, args=[bot])
+            scheduler.add_job(reset_weekly_counters, "cron", day_of_week="mon", hour=21, minute=0, args=[bot])
+            scheduler.add_job(db.check_and_expire_subscriptions, "interval", hours=1, args=[bot])
+            scheduler.start()
+            app.scheduler_started = True
+            logger.info("📅 Scheduler started in server.py (Railway mode).")
+        except ImportError:
+            logger.error("❌ apscheduler not installed. Background jobs will NOT run.")
+        except Exception as exc:
+            logger.error(f"❌ Failed to start scheduler: {exc}")
+
     final_webhook_url = f"{webhook_url}/telegram/webhook"
     logger.info(f"📤 Setting webhook to: {final_webhook_url}")
     await bot.bot.delete_webhook(drop_pending_updates=True)
@@ -181,24 +205,6 @@ async def on_startup():
         logger.info(f"✅ Webhook set successfully to {final_webhook_url}")
     else:
         logger.error("❌ Failed to set webhook")
-    # [Removed orphaned else block]
-
-    # FIX: Start background scheduler here when running as the Railway web service.
-    # main.py's post_init skips scheduler in webhook/Railway mode to avoid duplicates.
-    try:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from main import daily_reminder, panic_reminder, weekly_parent_report, reset_weekly_counters
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(daily_reminder, "cron", hour=4, minute=0, args=[bot])
-        scheduler.add_job(panic_reminder, "cron", hour=9, minute=0, args=[bot], id="panic_noon")
-        scheduler.add_job(panic_reminder, "cron", hour=17, minute=0, args=[bot], id="panic_evening")
-        scheduler.add_job(weekly_parent_report, "cron", day_of_week="sun", hour=15, minute=0, args=[bot])
-        scheduler.add_job(reset_weekly_counters, "cron", day_of_week="mon", hour=21, minute=0, args=[bot])
-        scheduler.add_job(db.check_and_expire_subscriptions, "interval", hours=1, args=[bot])
-        scheduler.start()
-        logger.info("📅 Scheduler started in server.py (Railway mode).")
-    except ImportError:
-        logger.error("❌ apscheduler not installed. Background jobs will NOT run.")
     except Exception as exc:
         logger.error(f"❌ Failed to start scheduler: {exc}")
 
@@ -273,6 +279,20 @@ async def debug_bot():
 @app.get("/test")
 async def test():
     return {"status": "route working"}
+
+@app.get("/ping")
+async def ping():
+    return "pong"
+
+# ── Catch-all Diagnostic Route ──────────────────────────────────────────────
+@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(request: Request, path_name: str):
+    """Logs any request that doesn't match an existing route to help debug 404s."""
+    logger.warning(f"🚩 CATCH-ALL HIT: [{request.method}] /{path_name} from {request.client.host if request.client else 'unknown'}")
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Not Found", "path": path_name, "method": request.method}
+    )
 
 # STEP 2 - The exact webhook handler requested
 @app.post("/telegram/webhook")
