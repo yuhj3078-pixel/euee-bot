@@ -256,20 +256,22 @@ async def test():
 # STEP 2 - The exact webhook handler requested
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-    logger.info("📨 Telegram update received")
+    logger.info("📨 Telegram POST received")
     try:
         bot_app = get_application()
         if bot_app is None:
-            logger.error("Application not initialized")
-            return JSONResponse({"ok": False}, status_code=200)
+            logger.error("❌ application is None")
+            return JSONResponse({"ok": True}, status_code=200)
         data = await request.json()
-        logger.info(f"Update data: {str(data)[:100]}")
+        logger.info(f"📦 Update type: {list(data.keys())}")
         update = Update.de_json(data, bot_app.bot)
+        logger.info(f"✅ Update parsed: {update.update_id}")
         await bot_app.process_update(update)
+        logger.info(f"✅ Update processed: {update.update_id}")
         return JSONResponse({"ok": True}, status_code=200)
     except Exception as e:
-        logger.error(f"Webhook error: {e}", exc_info=True)
-        return JSONResponse({"ok": False}, status_code=200)
+        logger.error(f"❌ Webhook error: {e}", exc_info=True)
+        return JSONResponse({"ok": True}, status_code=200)
 
 # (duplicate route removed — root_health is defined above at /health and /)
 
