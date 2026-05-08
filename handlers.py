@@ -1073,13 +1073,74 @@ async def _resolve_battle_answer(
 
 async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-
-    # Prevent double-click processing
-    if ctx.user_data.get("is_processing"):
-        return
+    # Always answer to stop the spinning icon
+    try:
+        await query.answer()
+    except Exception:
+        pass
 
     data = query.data
+    user_ref = safe_user_ref(query.from_user.id)
+    logger.info("[CALLBACK] user=%s data=%s", user_ref, data)
+
+    # Prevent double-click processing for NON-ADMIN actions
+    if not data.startswith("admin_") and ctx.user_data.get("is_processing"):
+        logger.warning("[CALLBACK] Blocked by is_processing for %s", user_ref)
+        return
+
+    # --- ADMIN ACTIONS (Bypass User Check) ---
+    if data.startswith("admin_approve_"):
+        if query.from_user.id not in ADMIN_IDS:
+            await query.answer("⛔ You are not authorized.", show_alert=True)
+            return
+        tx_id = data.replace("admin_approve_", "")
+        attempt_data = db.get_payment_attempt(tx_id)
+        if not attempt_data:
+            await query.answer("Transaction not found.")
+            return
+        if attempt_data.get("status") != "PENDING":
+            await query.answer(f"Already {attempt_data.get('status')}")
+            return
+        
+        success = db.approve_payment(tx_id)
+        if success:
+            try:
+                await query.edit_message_caption(f"{query.message.caption or ''}\n\n✅ APPROVED by {query.from_user.first_name}")
+            except Exception:
+                try: await query.edit_message_text(f"✅ APPROVED by {query.from_user.first_name}\nTX: {tx_id}")
+                except: pass
+            
+            student_id = attempt_data.get("telegram_id")
+            raw_plan = str(attempt_data.get("plan_requested", "pro")).lower()
+            plan = "MAX" if "max" in raw_plan else "PRO"
+            from datetime import datetime, timedelta
+            days = 365 if "yearly" in raw_plan else 30
+            duration_label = "1 Year" if days == 365 else "30 Days"
+            expiry_date = (datetime.now() + timedelta(days=days)).strftime("%B %d, %Y")
+            try:
+                await ctx.bot.send_message(
+                    chat_id=student_id,
+                    text=f"🎊 **CONGRATULATIONS!**\n\nYour upgrade to **{plan}** has been approved!\n📅 **Your plan expires:** {expiry_date}\nEnjoy your studies! 🚀",
+                    parse_mode="Markdown"
+                )
+            except: pass
+        else:
+            await query.answer("Approval failed in DB.")
+        return
+
+    if data.startswith("admin_reject_"):
+        if query.from_user.id not in ADMIN_IDS:
+            await query.answer("⛔ You are not authorized.", show_alert=True)
+            return
+        tx_id = data.replace("admin_reject_", "")
+        if db.reject_payment(tx_id):
+            try:
+                if query.message and query.message.caption:
+                    await query.edit_message_caption(f"{query.message.caption}\n\n❌ REJECTED by {query.from_user.first_name}")
+                else:
+                    await query.edit_message_text(f"❌ REJECTED by {query.from_user.first_name}\nTX: {tx_id}")
+            except: pass
+        return
     user = db.get_user(query.from_user.id)
     if not user:
         await query.edit_message_text("Please use /start first.")
@@ -1397,83 +1458,7 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data.startswith("admin_approve_"):
-        if query.from_user.id not in ADMIN_IDS:
-            await query.answer("⛔ You are not authorized.", show_alert=True)
-            return
-        tx_id = data.replace("admin_approve_", "")
-        attempt_data = db.get_payment_attempt(tx_id)
-        if not attempt_data:
-            await query.answer("Transaction not found.")
-            return
 
-        if attempt_data.get("status") != "PENDING":
-            await query.answer(f"Already {attempt_data.get('status')}")
-            return
-
-        success = db.approve_payment(tx_id)
-        if success:
-            # Try editing the caption (works if message has a photo)
-            try:
-                await query.edit_message_caption(
-                    f"{query.message.caption or ''}\n\n✅ APPROVED by {query.from_user.first_name}"
-                )
-            except Exception:
-                try:
-                    await query.edit_message_text(
-                        f"✅ APPROVED by {query.from_user.first_name}\nTX: {tx_id}"
-                    )
-                except Exception:
-                    pass
-
-            # Notify student with correct expiry date and duration label
-            student_id = attempt_data.get("telegram_id")
-            raw_plan = str(attempt_data.get("plan_requested", "pro")).lower()
-            plan = "MAX" if "max" in raw_plan else "PRO"
-            from datetime import datetime, timedelta
-
-            days = 365 if "yearly" in raw_plan else 30
-            duration_label = "1 Year" if days == 365 else "30 Days"
-            expiry_date = (datetime.now() + timedelta(days=days)).strftime("%B %d, %Y")
-            try:
-                await ctx.bot.send_message(
-                    chat_id=student_id,
-                    text=(
-                        f"🎊 **CONGRATULATIONS!**\n\n"
-                        f"Your upgrade to **{plan}** has been approved!\n"
-                        f"You now have full access to all {plan} features.\n\n"
-                        f"📅 **Your plan expires:** {expiry_date}\n"
-                        f"_({duration_label} from today)_\n\n"
-                        f"Enjoy your studies! 🚀"
-                    ),
-                    parse_mode="Markdown",
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify student {student_id}: {e}")
-                # Alert admin that student was NOT notified
-                await query.message.reply_text(
-                    f"⚠️ **Warning:** Student {student_id} was upgraded in DB but NOT notified (bot blocked or session expired). Please contact them manually."
-                )
-        else:
-            await query.answer("Approval failed.")
-        return
-
-    if data.startswith("admin_reject_"):
-        if query.from_user.id not in ADMIN_IDS:
-            await query.answer("⛔ You are not authorized.", show_alert=True)
-            return
-        tx_id = data.replace("admin_reject_", "")
-        db.reject_payment(tx_id)
-        # FIX: Fallback to edit_message_text if caption is unavailable (prevents crash on text-only messages).
-        try:
-            if query.message and query.message.caption:
-                await query.edit_message_caption(
-                    f"{query.message.caption}\n\n❌ REJECTED by {query.from_user.first_name}"
-                )
-            else:
-                await query.edit_message_text(
-                    f"❌ REJECTED by {query.from_user.first_name}\nTX: {tx_id}"
-                )
         except Exception:
             pass
         return

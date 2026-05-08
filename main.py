@@ -397,8 +397,12 @@ def build_app():
         allow_reentry=True,
     )
 
+    # Group 0: High-priority global handlers (Admin, etc.)
+    app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=0)
+    
     app.add_handler(conv)
-    # Global catch-all should respond to user if nothing else matched (excluding photos which go to conversation handler)
+    
+    # Global catch-all should respond to user if nothing else matched
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _safe(start)))
 
     async def safe_log_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -415,7 +419,6 @@ def build_app():
             )
 
     app.add_handler(MessageHandler(filters.ALL, safe_log_messages), group=-1)
-    app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=1)
     app.add_handler(
         CallbackQueryHandler(
             _safe(handle_textbook_download), pattern="^dl_textbook_.*$"
