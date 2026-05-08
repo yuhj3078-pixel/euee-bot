@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, APIRouter
+from starlette.requests import Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,15 +29,15 @@ logger = logging.getLogger(__name__)
 
 # FIX: Defer bot application build to startup so importing server.py never triggers
 # Firebase init, scheduler start, or Telegram token validation at import time.
-ptb_app = None
+application = None
 
 
-def _get_ptb_app():
-    global ptb_app
-    if ptb_app is None:
+def get_application():
+    global application
+    if application is None:
         from main import build_app as build_bot_app
-        ptb_app = build_bot_app()
-    return ptb_app
+        application = build_bot_app()
+    return application
 
 # ── Redis Rate Limiting (Pass 6.3) ──────────────────────────────────────────
 REDIS_URL = os.getenv("REDIS_URL")
@@ -151,7 +152,7 @@ async def on_startup():
         logger.error(f"🔴 DATABASE CONNECTION TEST FAILED: {exc}")
         logger.error("The app will start, but database-dependent features will fail. Check Supabase credentials.")
 
-    bot = _get_ptb_app()
+    bot = get_application()
     try:
         await bot.initialize()
         await bot.start()
@@ -183,6 +184,9 @@ async def on_startup():
                 logger.info(f"✅ Webhook successfully set. URL={info.url}, Pending={info.pending_update_count}, Error={info.last_error_message}")
             else:
                 logger.error("❌ Failed to set Telegram webhook.")
+    else:
+        logger.info("📡 No WEBHOOK_URL detected — starting in polling mode (non-blocking).")
+        await bot.updater.start_polling(drop_pending_updates=True)
 
     # FIX: Start background scheduler here when running as the Railway web service.
     # main.py's post_init skips scheduler in webhook/Railway mode to avoid duplicates.
@@ -206,7 +210,7 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     # FIX: Graceful shutdown on SIGTERM — finish processing updates before exiting.
-    bot = _get_ptb_app()
+    bot = get_application()
     logger.info("Shutting down PTB application...")
     await bot.stop()
     await bot.shutdown()
@@ -223,6 +227,7 @@ signal.signal(signal.SIGTERM, _handle_sigterm)
 
 @app.get("/")
 @app.get("/health")
+@app.get("/healthz")
 async def root_health(request: Request):
     """Core health check and diagnostic endpoint."""
     logger.info(f"🩺 Health check hit from {request.client.host}")
@@ -238,7 +243,7 @@ async def root_health(request: Request):
 async def telegram_webhook_info(request: Request):
     """Diagnostic endpoint to check webhook status."""
     logger.info(f"🔍 Webhook info requested from {request.client.host}")
-    bot = _get_ptb_app()
+    bot = get_application()
     info = await bot.bot.get_webhook_info()
     return {
         "url": info.url,
@@ -248,31 +253,12 @@ async def telegram_webhook_info(request: Request):
     }
 
 @app.post("/telegram/webhook")
-@app.post("/telegram/webhook/") # Handle trailing slash
-@app.post("/webhook/telegram/webhook")
 async def telegram_webhook(request: Request):
-    logger.info("📩 Incoming webhook request received")
-    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    
-    if not WEBHOOK_SECRET:
-        logger.error("❌ WEBHOOK_SECRET not configured in environment variables.")
-        raise HTTPException(status_code=500, detail="Webhook secret not configured")
-        
-    if not hmac.compare_digest(secret or "", WEBHOOK_SECRET):
-        logger.warning(f"⚠️ Invalid webhook secret received (Header: {secret[:4]}... vs Config: {WEBHOOK_SECRET[:4]}...)")
-        raise HTTPException(status_code=401, detail="Invalid secret token")
-
-    try:
-        payload = await request.json()
-        logger.debug(f"Payload: {payload}")
-        bot = _get_ptb_app()
-        update = Update.de_json(data=payload, bot=bot.bot)
-        # Use process_update directly for faster, more reliable webhook response
-        await bot.process_update(update)
-        return {"ok": True}
-    except Exception as exc:
-        logger.error(f"💥 Error processing webhook: {exc}")
-        return {"ok": False, "error": str(exc)}
+    data = await request.json()
+    application = get_application()
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return {"ok": True}
 
 # (duplicate route removed — root_health is defined above at /health and /)
 
@@ -312,7 +298,7 @@ async def chapa_webhook(request: Request):
             if success:
                 logger.info(f"✅ Automated upgrade: User {telegram_id} to {tier_req} via Chapa")
                 # Notify the user via bot
-                bot = _get_ptb_app()
+                bot = get_application()
                 lang = "en"
                 try:
                     user_data = db.get_user(telegram_id)

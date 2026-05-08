@@ -214,35 +214,10 @@ from fastapi import FastAPI, Request, HTTPException
 import uvicorn
 import hmac
 
-# ── FastAPI App for Railway Webhook + Health (STEP 4) ───────────────────────
-web_app = FastAPI()
+# ── FastAPI App Configuration ────────────────────────────────────────────────
+from server import app as web_app
 
-@web_app.get("/healthz")
-async def health():
-    return {"status": "ok"}
 
-@web_app.post("/webhook")
-async def telegram_webhook(request: Request):
-    # Verify secret if provided
-    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    webhook_secret = os.getenv("WEBHOOK_SECRET")
-    if webhook_secret and not hmac.compare_digest(secret or "", webhook_secret):
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-        
-    payload = await request.json()
-    bot = build_app() # Get or build the app
-    update = Update.de_json(payload, bot.bot)
-    await bot.process_update(update)
-    return {"ok": True}
-
-# Import all routes from server.py to preserve features
-from server import admin_router
-web_app.include_router(admin_router)
-
-@web_app.post("/api/payments/chapa/callback")
-async def chapa_proxy(request: Request):
-    from server import chapa_webhook
-    return await chapa_webhook(request)
 
 def build_app():
     global bot_app
@@ -326,26 +301,11 @@ def build_app():
     return app
 
 async def main():
-    # STEP 2 & 7 - WEBHOOK SETUP
-    app = build_app()
-    await app.initialize()
-    await app.start()
-    
+    # The bot and scheduler are now initialized via server.py's @app.on_event("startup")
+    # which is triggered when uvicorn starts.
     port = int(os.environ.get("PORT", 8080))
-    webhook_url = os.environ.get("WEBHOOK_URL", "").rstrip("/")
     
-    if webhook_url:
-        logger.info(f"🚀 Webhook mode at: {webhook_url}/webhook")
-        await app.bot.set_webhook(
-            url=f"{webhook_url}/webhook",
-            secret_token=os.getenv("WEBHOOK_SECRET"),
-            allowed_updates=["message", "callback_query"]
-        )
-    else:
-        logger.info("📡 Polling mode (local/dev)...")
-        await app.updater.start_polling(drop_pending_updates=True)
-
-    # Start FastAPI with Uvicorn
+    # Start FastAPI with Uvicorn (web_app is imported from server.app)
     config = uvicorn.Config(web_app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
     server = uvicorn.Server(config)
     await server.serve()
