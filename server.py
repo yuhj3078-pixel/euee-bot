@@ -221,6 +221,10 @@ def _handle_sigterm(signum, frame):
 
 signal.signal(signal.SIGTERM, _handle_sigterm)
 
+@app.get("/test")
+async def test_route():
+    return {"status": "route working", "time": str(datetime.now())}
+
 @app.get("/")
 @app.get("/health")
 @app.get("/healthz")
@@ -260,10 +264,12 @@ async def telegram_webhook(request: Request):
     try:
         bot_app = get_application()
         if bot_app is None:
-            logger.error("❌ application is None")
-            return JSONResponse({"ok": True}, status_code=200)
+            logger.error("Application not initialized")
+            return JSONResponse({"ok": False}, status_code=200)
+        
+        body = await request.body()
+        logger.info(f"📦 Raw Update: {body.decode()[:200]}")
         data = await request.json()
-        logger.info(f"📦 Update type: {list(data.keys())}")
         update = Update.de_json(data, bot_app.bot)
         logger.info(f"✅ Update parsed: {update.update_id}")
         await bot_app.process_update(update)
