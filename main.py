@@ -371,6 +371,10 @@ def build_app():
                     filters.PHOTO | filters.Document.IMAGE,
                     _guard(handle_telebirr_photo),
                 ),
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    _guard(handle_telebirr_tx),
+                ),
                 # Allow user to pick a different plan while in photo-waiting state
                 CallbackQueryHandler(
                     _safe(handle_upgrade_button), pattern="^upgrade_"
