@@ -96,10 +96,11 @@ def validate_env():
         missing.append("at least one AI provider key (GEMINI/GROQ/ANTHROPIC/OPENROUTER/SAMBANOVA)")
     
     if missing:
-        import sys
-        print(f"[ERROR] CRITICAL: Missing, insecure, or too-short environment variables: {', '.join(missing)}")
-        print("Bot cannot start securely. Please set these to strong random values in your .env.")
-        sys.exit(1)
+        print(f"[WARNING] Missing or insecure environment variables: {', '.join(missing)}")
+        print("[WARNING] The bot might not function correctly until these are set in the Railway dashboard.")
+        # We don't sys.exit(1) anymore to allow the app to start and the user to see logs.
+    else:
+        print("[SUCCESS] Environment validation passed.")
 
 
 # ── Tier limits ───────────────────────────────────────────────────────────────

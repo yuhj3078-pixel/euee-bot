@@ -138,12 +138,17 @@ async def on_startup():
         test_user = db.get_user(1)  # Non-existent user, just to test connection
         logger.info("Database connection test passed.")
     except Exception as exc:
-        logger.exception("Database connection test failed at startup.")
-        raise RuntimeError("Database connection test failed. Check Supabase credentials.") from exc
+        logger.error(f"🔴 DATABASE CONNECTION TEST FAILED: {exc}")
+        logger.error("The app will start, but database-dependent features will fail. Check Supabase credentials.")
 
-    bot = _get_ptb_app()
-    await bot.initialize()
-    await bot.start()
+    try:
+        bot = _get_ptb_app()
+        await bot.initialize()
+        await bot.start()
+        logger.info("🤖 Bot initialized and started successfully.")
+    except Exception as exc:
+        logger.error(f"🔴 BOT INITIALIZATION FAILED: {exc}")
+        logger.error("The web server will stay up, but the Telegram bot will NOT respond.")
     webhook_url = os.getenv("WEBHOOK_URL", "").strip()
     if webhook_url:
         logger.info("Setting webhook to %s/telegram/webhook", webhook_url)
