@@ -368,8 +368,8 @@ def build_app():
         },
         fallbacks=[
             CommandHandler("menu", _safe(start)),
-            # Fallback to start if confused
-            MessageHandler(filters.ALL & ~filters.COMMAND, _safe(start)),
+            # Fallback to start if confused (excluding photos which are handled in conversation)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, _safe(start)),
         ],
         per_user=True,
         per_chat=True,

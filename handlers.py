@@ -1449,6 +1449,10 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 logger.error(f"Failed to notify student {student_id}: {e}")
+                # Alert admin that student was NOT notified
+                await query.message.reply_text(
+                    f"⚠️ **Warning:** Student {student_id} was upgraded in DB but NOT notified (bot blocked or session expired). Please contact them manually."
+                )
         else:
             await query.answer("Approval failed.")
         return
@@ -1924,47 +1928,46 @@ async def handle_textbook_download(update: Update, ctx: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
 
-    subject_code = query.data.replace("dl_textbook_", "")
-    textbooks_dir = os.path.join(os.path.dirname(__file__), "textbooks")
+    subject_code = query.data.replace("dl_textbook_", "").lower()
+    from pathlib import Path
+    textbooks_dir = Path(__file__).parent / "textbooks"
+
+    if not textbooks_dir.exists():
+        await query.edit_message_text("❌ Textbook library is currently undergoing maintenance.")
+        return
 
     # Map subject codes to actual filenames found in directory
-    files = [
-        f
-        for f in os.listdir(textbooks_dir)
-        if os.path.isfile(os.path.join(textbooks_dir, f))
-    ]
     target_file = None
-
-    # Simple keyword match
-    for f in files:
-        if subject_code.lower() in f.lower():
+    for f in textbooks_dir.glob("*.pdf"):
+        if subject_code in f.name.lower():
             target_file = f
             break
 
     if not target_file:
         await query.edit_message_text(
-            f"❌ Sorry, the {subject_code} textbook is not available yet."
+            f"❌ Sorry, the {subject_code.title()} textbook is not available in the library yet. "
+            "I'm working on getting it! In the meantime, use 'Study Notes' for a summary."
         )
         return
 
-    file_path = os.path.join(textbooks_dir, target_file)
-    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    file_size_mb = target_file.stat().st_size / (1024 * 1024)
 
     await query.edit_message_text(
-        f"⏳ Preparing **{target_file}** ({file_size_mb:.1f} MB)...\nThis may take a minute."
+        f"⏳ Preparing **{target_file.name}** ({file_size_mb:.1f} MB)...\nThis may take a minute."
     )
 
     try:
-        with open(file_path, "rb") as fh:
+        with open(target_file, "rb") as fh:
             await query.message.reply_document(
                 document=fh,
-                filename=target_file,
-                caption=f"📚 {target_file}\nGrade 12 EUEE Resource",
+                filename=target_file.name,
+                caption=f"📚 {target_file.name}\nGrade 12 EUEE Resource",
             )
     except Exception as e:
-        logger.error(f"Failed to send {target_file}: {e}")
+        logger.error(f"Failed to send {target_file.name}: {e}")
         await query.message.reply_text(
-            "❌ Failed to send file. It might be too large for the Telegram Bot API (Max 50MB). Please try a smaller resource or contact admin."
+            "❌ Failed to send file. It might be too large for the Telegram Bot API (>50MB). "
+            "Please contact @Fish212424 for a direct download link."
         )
 
 
@@ -2263,6 +2266,13 @@ async def handle_telebirr_tx(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f"[PHOTO] Handler reached for user {update.effective_user.id if update.effective_user else 'unknown'}"
+    )
+    logger.info(
+        f"[PHOTO] user_data keys: {list(ctx.user_data.keys()) if ctx.user_data else 'None'}"
+    )
+
     # Accept both photo messages and document images
     if not update.message.photo and not (
         update.message.document
@@ -2326,6 +2336,17 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "⏳ You will receive a confirmation here as soon as your account is upgraded!",
         parse_mode="Markdown",
     )
+
+    # Get downloadable file for admin (file_id works, but downloading ensures compatibility)
+    photo_file = None
+    try:
+        if update.message.photo:
+            photo_file = await ctx.bot.get_file(update.message.photo[-1].file_id)
+        elif update.message.document:
+            photo_file = await ctx.bot.get_file(update.message.document.file_id)
+        logger.info(f"[PAYMENT] Got photo file: {photo_file}")
+    except Exception as e:
+        logger.exception(f"Failed to get photo file: {e}")
 
     # Notify both admins with photo + approve/reject buttons
     plan_label = tier.replace("_", " ").upper()

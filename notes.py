@@ -134,8 +134,15 @@ def get_local_notes_pdf(subject: str) -> Path | None:
     """Look for any PDF in notes/ whose name contains the subject."""
     if not NOTES_DIR.exists():
         return None
-    
+
     subject_lower = subject.lower()
+    # Direct mapping check
+    mapped_name = SUBJECT_NOTES_PDF_MAP.get(subject_lower)
+    if mapped_name:
+        path = NOTES_DIR / mapped_name
+        if path.exists():
+            return path
+
     for pdf in NOTES_DIR.glob("*.pdf"):
         if subject_lower in pdf.name.lower():
             return pdf
@@ -146,7 +153,7 @@ def get_local_audio_file(subject: str) -> Path | None:
     """Look for any MP3/M4A/WAV in audio_lessons/ whose name contains the subject."""
     if not AUDIO_DIR.exists():
         return None
-    
+
     subject_lower = subject.lower()
     for ext in ["*.mp3", "*.m4a", "*.wav"]:
         for audio in AUDIO_DIR.glob(ext):
