@@ -239,6 +239,7 @@ async def telegram_webhook(request: Request):
         return {"ok": False, "error": str(exc)}
 
 @app.get("/")
+@app.get("/health")
 async def root_health():
     return {"status": "ok", "service": "Abebe EUEE Bot", "version": "2.0"}
 
