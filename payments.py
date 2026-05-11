@@ -57,7 +57,7 @@ async def create_payment(telegram_id: int, tier: str, first_name: str, email: st
     tx_ref = f"euee-{telegram_id}-{tier}-{int(time.time())}"
     amount = TIER_PRICES.get(tier, 99)
     if not email:
-        email = f"student{telegram_id}@euee.bot"
+        email = f"student{telegram_id}@abebe.app"
 
     return_url = f"https://t.me/{PUBLIC_BOT_USERNAME}" if PUBLIC_BOT_USERNAME else BASE_WEB_URL
     payload = {
