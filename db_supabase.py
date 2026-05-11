@@ -210,6 +210,54 @@ def is_subscription_active(telegram_id: int) -> bool:
     return datetime.now(timezone.utc) < expiry_dt
 
 
+def grant_pro_access(user_id: int, plan: str) -> bool:
+    """Grant pro/max access to a user with 30-day expiry."""
+    try:
+        plan = str(plan).lower()
+        tier = "max" if "max" in plan else "pro"
+        expiry = datetime.now(timezone.utc) + timedelta(days=30)
+
+        success = update_user(
+            user_id,
+            {
+                "tier": tier,
+                "subscription_active": True,
+                "subscription_expires_at": expiry.isoformat(),
+            },
+        )
+        if success:
+            logger.info(f"Granted {tier} access to user {user_id}, expires {expiry.isoformat()}")
+        return success
+    except Exception as e:
+        logger.error(f"Failed to grant {plan} access to user {user_id}: {e}")
+        return False
+
+
+def check_subscription(user_id: int) -> str:
+    """Check subscription status and auto-expire if necessary. Returns 'free', 'pro', or 'max'."""
+    try:
+        user = get_user(user_id)
+        if not user:
+            return "free"
+
+        tier = normalize_tier(user.get("tier"))
+        expires = user.get("subscription_expires_at")
+
+        if not expires or tier == "free":
+            return "free"
+
+        expiry_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+
+        if datetime.now(timezone.utc) >= expiry_dt:
+            update_user(user_id, {"tier": "free", "subscription_active": False})
+            return "free"
+
+        return tier
+    except Exception as e:
+        logger.error(f"Error checking subscription for user {user_id}: {e}")
+        return "free"
+
+
 # ── SOCIAL & COMPETITION ───────────────────────────────────────────────────
 
 

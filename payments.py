@@ -53,7 +53,8 @@ async def create_payment(telegram_id: int, tier: str, first_name: str, email: st
     if not CHAPA_SECRET_KEY:
         return {"error": "Payment setup is incomplete. Add the Chapa secret key first."}
 
-    tx_ref = f"euee_{tier}_{telegram_id}_{uuid.uuid4().hex[:8]}"
+    import time
+    tx_ref = f"euee-{telegram_id}-{tier}-{int(time.time())}"
     amount = TIER_PRICES.get(tier, 99)
     if not email:
         email = f"student{telegram_id}@euee.bot"
@@ -103,3 +104,8 @@ async def verify_payment(tx_ref: str) -> dict:
             return {"verified": False}
     except Exception:
         return {"verified": False}
+
+
+async def create_payment_link(telegram_id: int, plan: str, first_name: str, email: str = "") -> dict:
+    """Alias for create_payment() for cleaner API."""
+    return await create_payment(telegram_id, plan, first_name, email)

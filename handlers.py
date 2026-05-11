@@ -119,6 +119,7 @@ from async_util import run_blocking
 
 import ai
 import db_supabase as db
+import payments
 
 sys.modules["db"] = db
 import inspect
@@ -1939,7 +1940,6 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Invalid plan.")
         return ConversationHandler.END
 
-    # Pass 3.8/4.2: Strict single-subscription enforcement for paid plans only
     user = db.get_user(query.from_user.id)
     current_tier = db.normalize_tier(user.get("tier") if user else None)
     has_active_paid_plan = current_tier in {"pro", "max"} and db.is_subscription_active(
@@ -1958,7 +1958,6 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(msg, parse_mode="Markdown")
         return ConversationHandler.END
 
-    # Make sure the Telegram user exists before writing the payment attempt row.
     if not db.get_user(query.from_user.id):
         db.update_user(
             query.from_user.id,
@@ -1970,46 +1969,70 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             },
         )
 
-    ctx.user_data["pending_tier"] = plan_id
     from config import TIER_PRICES
-
     price = TIER_PRICES.get(plan_id, 100)
     duration_label = "1 Year" if "yearly" in plan_id else "30 Days"
+    plan_label = plan_id.replace("_", " ").title()
 
-    tx_ref = _generate_private_reference("MAN")
-    saved = db.save_payment_attempt(
-        telegram_id=query.from_user.id,
-        username=query.from_user.first_name or query.from_user.username or "Student",
-        tx_id=tx_ref,
-        plan_requested=plan_id,
-        screenshot_url="",
-        status="PENDING",
-        source="manual_review",
-        amount=price,
-    )
-    if not saved:
+    try:
+        result = await payments.create_payment_link(
+            telegram_id=query.from_user.id,
+            plan=plan_id,
+            first_name=query.from_user.first_name or query.from_user.username or "Student",
+            email=user.get("email", "") if user else ""
+        )
+
+        if "error" in result:
+            logger.error(f"Chapa payment creation failed: {result['error']}")
+            await query.edit_message_text(
+                f"❌ {result['error']}\n\nPlease try again or contact support.",
+                parse_mode="Markdown",
+            )
+            return ConversationHandler.END
+
+        checkout_url = result.get("checkout_url")
+        tx_ref = result.get("tx_ref")
+
+        if not checkout_url:
+            logger.error("Chapa returned no checkout_url")
+            await query.edit_message_text(
+                "❌ Payment service unavailable. Please try again later.",
+                parse_mode="Markdown",
+            )
+            return ConversationHandler.END
+
+        lang = user.get("language", "en") if user else "en"
+        if lang == "en":
+            msg = (
+                f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
+                f"🔐 Secure payment via Chapa\n"
+                f"Accepted: TeleBirr, CBEBirr, Card\n\n"
+                f"Tap the button below to complete payment.\n"
+                f"Payment confirmation is instant! 🚀"
+            )
+        else:
+            msg = (
+                f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
+                f"🔐 Chapa በኩል ደህንነት የሰጣ ክፍያ\n"
+                f"ተደግፏል: TeleBirr, CBEBirr, Card\n\n"
+                f"ከዚህ በታች ያለውን ቁልፍ ይጫኑ።\n"
+                f"ክፍያ ሪኮንፌርሜሽን ወዲያውኑ ይከሰታል! 🚀"
+            )
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Pay Now", url=checkout_url)]
+        ])
+        await query.edit_message_text(msg, reply_markup=keyboard, parse_mode="Markdown")
+        logger.info(f"Created Chapa payment link for user {query.from_user.id}, plan {plan_id}")
+
+    except Exception as e:
+        logger.error(f"Error creating Chapa payment link: {e}")
         await query.edit_message_text(
-            "⚠️ Could not create a payment record. Please try again or contact admin.",
+            "❌ An error occurred. Please try again or contact support.",
             parse_mode="Markdown",
         )
-        return ConversationHandler.END
 
-    # Store the tx_ref so handle_telebirr_photo can attach the screenshot to it
-    ctx.user_data["pending_tx_ref"] = tx_ref
-
-    plan_label = plan_id.replace("_", " ").title()
-    msg = (
-        f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
-        f"To complete your upgrade, follow these 3 simple steps:\n\n"
-        f"1️⃣ Send **{price} ETB** via Telebirr or CBE Birr to:\n"
-        f"👉 `{TELEBIRR_NUMBER}`\n\n"
-        f"2️⃣ Take a **screenshot** of your payment receipt.\n\n"
-        f"3️⃣ **Send the photo here** (to this bot) ⬇️\n\n"
-        f"Abebe will notify the admin immediately! Once approved, your account will be upgraded instantly. 🚀\n"
-        f"_Ref: `{tx_ref}`_"
-    )
-    await query.edit_message_text(msg, parse_mode="Markdown")
-    return AWAITING_TELEBIRR_PHOTO
+    return ConversationHandler.END
 
 
 async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
