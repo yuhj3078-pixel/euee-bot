@@ -1969,70 +1969,42 @@ async def handle_upgrade_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             },
         )
 
-    from config import TIER_PRICES
+    from config import TIER_PRICES, TELEBIRR_NUMBER
     price = TIER_PRICES.get(plan_id, 100)
     duration_label = "1 Year" if "yearly" in plan_id else "30 Days"
     plan_label = plan_id.replace("_", " ").title()
 
-    try:
-        result = await payments.create_payment_link(
-            telegram_id=query.from_user.id,
-            plan=plan_id,
-            first_name=query.from_user.first_name or query.from_user.username or "Student",
-            email=user.get("email", "") if user else ""
+    lang = user.get("language", "en") if user else "en"
+
+    # Store upgrade details for Telebirr flow
+    ctx.user_data["pending_tier"] = plan_id
+    ctx.user_data["pending_tx_ref"] = _generate_private_reference("UPGRADE")
+
+    if lang == "en":
+        msg = (
+            f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
+            f"📱 **Pay via TeleBirr**\n"
+            f"Send **{price} ETB** to: `{TELEBIRR_NUMBER}`\n\n"
+            f"Then:\n"
+            f"1️⃣ Reply with your **Transaction ID** (from the receipt)\n"
+            f"2️⃣ Send a **SCREENSHOT** of the payment receipt\n\n"
+            f"Your account will be upgraded within 24 hours! ✅"
+        )
+    else:
+        msg = (
+            f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
+            f"📱 **በ TeleBirr ይክፈሉ**\n"
+            f"**{price} ETB** ወደዚህ ቁጥር ይላኩ: `{TELEBIRR_NUMBER}`\n\n"
+            f"ከዚያ:\n"
+            f"1️⃣ ከደምስስዎ **ክፍያ ID** (ከደረሰኞት)\n"
+            f"2️⃣ የክፍያ ደምስስ **ስክሪንሹት** ይላኩ\n\n"
+            f"መለያዎ በ 24 ሰዓታት ውስጥ ይሻሻላል! ✅"
         )
 
-        if "error" in result:
-            logger.error(f"Chapa payment creation failed: {result['error']}")
-            await query.edit_message_text(
-                f"❌ {result['error']}\n\nPlease try again or contact support.",
-                parse_mode="Markdown",
-            )
-            return ConversationHandler.END
+    await query.edit_message_text(msg, parse_mode="Markdown")
+    logger.info(f"Initiated Telebirr payment flow for user {query.from_user.id}, plan {plan_id}")
 
-        checkout_url = result.get("checkout_url")
-        tx_ref = result.get("tx_ref")
-
-        if not checkout_url:
-            logger.error("Chapa returned no checkout_url")
-            await query.edit_message_text(
-                "❌ Payment service unavailable. Please try again later.",
-                parse_mode="Markdown",
-            )
-            return ConversationHandler.END
-
-        lang = user.get("language", "en") if user else "en"
-        if lang == "en":
-            msg = (
-                f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
-                f"🔐 Secure payment via Chapa\n"
-                f"Accepted: TeleBirr, CBEBirr, Card\n\n"
-                f"Tap the button below to complete payment.\n"
-                f"Payment confirmation is instant! 🚀"
-            )
-        else:
-            msg = (
-                f"💳 **{plan_label} — {price} ETB / {duration_label}**\n\n"
-                f"🔐 Chapa በኩል ደህንነት የሰጣ ክፍያ\n"
-                f"ተደግፏል: TeleBirr, CBEBirr, Card\n\n"
-                f"ከዚህ በታች ያለውን ቁልፍ ይጫኑ።\n"
-                f"ክፍያ ሪኮንፌርሜሽን ወዲያውኑ ይከሰታል! 🚀"
-            )
-
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💳 Pay Now", url=checkout_url)]
-        ])
-        await query.edit_message_text(msg, reply_markup=keyboard, parse_mode="Markdown")
-        logger.info(f"Created Chapa payment link for user {query.from_user.id}, plan {plan_id}")
-
-    except Exception as e:
-        logger.error(f"Error creating Chapa payment link: {e}")
-        await query.edit_message_text(
-            "❌ An error occurred. Please try again or contact support.",
-            parse_mode="Markdown",
-        )
-
-    return ConversationHandler.END
+    return AWAITING_TELEBIRR_TX
 
 
 async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
