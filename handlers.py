@@ -2278,10 +2278,10 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "✅ **Payment Screenshot Received!**\n\n"
-        "Your receipt has been sent to the admin for review. "
-        "Your account will be upgraded within **24 hours**.\n\n"
-        "📬 For **faster processing**, also send your screenshot directly to **@Fish212424**\n\n"
-        "⏳ You will receive a confirmation here as soon as your account is upgraded!",
+        "Your receipt has been sent to the admin for review.\n"
+        "⚡ **Instant approval** — Your account will be upgraded immediately once approved!\n\n"
+        "📬 For **fastest confirmation**, also send your screenshot to **@Fish212424**\n\n"
+        "✨ You will receive a notification as soon as your account is upgraded!",
         parse_mode="Markdown",
     )
 
