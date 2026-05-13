@@ -2349,8 +2349,6 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"[PAYMENT] ✅ Text fallback sent to admin {target_admin}")
             except Exception as e2:
                 logger.exception(f"[PAYMENT] ❌ Also failed text fallback to admin {target_admin}: {e2}")
-                    f"Also failed to send text to admin {target_admin}: {e2}"
-                )
 
     return ConversationHandler.END
 
