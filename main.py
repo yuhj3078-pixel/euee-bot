@@ -437,6 +437,7 @@ def build_app():
         "id",
         "demo_upgrade",
         "admin",
+        "test_admin_notify",
         "manualupgrade",
         "admin_build",
         "invite",

@@ -2301,9 +2301,13 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # DEBUG: Log admin IDs being notified
     logger.info(f"[PAYMENT] Notifying admins: ADMIN_IDS={ADMIN_IDS}")
-
+    
+    if not ADMIN_IDS:
+        logger.error("[PAYMENT] ❌ No admin IDs configured! Payment notification will not be sent.")
+    
     for target_admin in ADMIN_IDS:
         if not target_admin or target_admin == 0:
+            logger.warning(f"[PAYMENT] Skipping invalid admin ID: {target_admin}")
             continue
         try:
             admin_msg = (
@@ -2319,6 +2323,7 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 safe_user_ref(update.effective_user.id),
             )
             admin_msg = admin_msg.replace("Telegram ID", "User Ref")
+            logger.info(f"[PAYMENT] 📤 Sending photo notification to admin {target_admin}")
             await ctx.bot.send_photo(
                 chat_id=target_admin,
                 photo=file_id,
@@ -2326,18 +2331,24 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown",
                 reply_markup=kb.admin_approval_keyboard(tx_id),
             )
-            logger.info(f"[PAYMENT] Successfully sent to admin {target_admin}")
+            logger.info(f"[PAYMENT] ✅ Successfully sent photo notification to admin {target_admin}")
         except Exception as e:
-            logger.exception(f"Failed to notify admin {target_admin}: {e}")
+            logger.exception(f"[PAYMENT] ❌ Failed to notify admin {target_admin} with photo: {e}")
             # Try sending as text message if photo fails
             try:
+                logger.info(f"[PAYMENT] 📝 Attempting text fallback for admin {target_admin}")
                 await ctx.bot.send_message(
                     chat_id=target_admin,
-                    text=f"🔔 NEW UPGRADE REQUEST - Photo failed to send\n\nTX: {tx_id}\nUser: {update.effective_user.first_name}",
+                    text=f"🔔 NEW UPGRADE REQUEST\n\n"
+                    f"Student: {update.effective_user.first_name}\n"
+                    f"Plan: {plan_label}\n"
+                    f"TX: {tx_id}\n\n"
+                    f"(Photo could not be sent, but screenshot was saved)",
                     reply_markup=kb.admin_approval_keyboard(tx_id),
                 )
+                logger.info(f"[PAYMENT] ✅ Text fallback sent to admin {target_admin}")
             except Exception as e2:
-                logger.exception(
+                logger.exception(f"[PAYMENT] ❌ Also failed text fallback to admin {target_admin}: {e2}")
                     f"Also failed to send text to admin {target_admin}: {e2}"
                 )
 
@@ -2604,6 +2615,43 @@ async def cmd_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb.telegram_admin_keyboard(),
         parse_mode="Markdown",
     )
+
+
+async def cmd_test_admin_notify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: Test if admin notifications work.
+    Usage: /test_admin_notify
+    """
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Unauthorized.")
+        return
+
+    logger.info(f"[TEST] Admin {update.effective_user.id} testing notification system")
+    logger.info(f"[TEST] ADMIN_IDS = {ADMIN_IDS}")
+
+    await update.message.reply_text(
+        f"📬 **Testing admin notification system...**\n\n"
+        f"ADMIN_IDS: {ADMIN_IDS}\n"
+        f"Your ID: {update.effective_user.id}\n"
+        f"Is in ADMIN_IDS: {update.effective_user.id in ADMIN_IDS}\n\n"
+        f"Sending test message..."
+    )
+
+    # Send test message to all admin IDs
+    for admin_id in ADMIN_IDS:
+        try:
+            await ctx.bot.send_message(
+                chat_id=admin_id,
+                text=f"✅ **ADMIN NOTIFICATION TEST SUCCESSFUL**\n\n"
+                f"Admin ID: {admin_id}\n"
+                f"Test sent at: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"If you see this, notifications are working!",
+                parse_mode="Markdown"
+            )
+            logger.info(f"[TEST] Successfully sent test notification to {admin_id}")
+            await update.message.reply_text(f"✅ Test message sent to admin {admin_id}")
+        except Exception as e:
+            logger.error(f"[TEST] Failed to send test to {admin_id}: {e}")
+            await update.message.reply_text(f"❌ Failed to send test to {admin_id}: {e}")
 
 
 async def cmd_manual_upgrade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
