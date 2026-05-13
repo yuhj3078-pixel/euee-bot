@@ -23,7 +23,6 @@ GEMINI_API_KEY      = os.getenv("GEMINI_API_KEY", "")
 OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY", "")
 SAMBANOVA_API_KEY   = os.getenv("SAMBANOVA_API_KEY", "")
 ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY", "")
-CHAPA_SECRET_KEY    = os.getenv("CHAPA_SECRET_KEY", "")
 # When unset, instant "demo" upgrades via inline button are blocked unless true (dev only).
 ALLOW_DEMO_UPGRADE  = os.getenv("ALLOW_DEMO_UPGRADE", "").lower() in ("1", "true", "yes")
 WEBHOOK_SECRET      = os.getenv("WEBHOOK_SECRET", "")

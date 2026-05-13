@@ -699,46 +699,6 @@ def reject_payment(tx_id: str) -> bool:
         return False
 
 
-def upgrade_user_chapa(telegram_id: int, plan_id: str, tx_id: str) -> bool:
-    """Automated upgrade for Chapa payments."""
-    try:
-        # 1. Normalize plan and duration
-        clean_plan = "pro" if "pro" in plan_id.lower() else "max"
-        days = 365 if "yearly" in plan_id.lower() else 30
-        expiry = datetime.now(timezone.utc) + timedelta(days=days)
-
-        # 2. Update user
-        update_user(
-            telegram_id,
-            {
-                "tier": clean_plan,
-                "subscription_active": True,
-                "subscription_expires_at": expiry.isoformat(),
-            },
-        )
-
-        # 3. Log attempt
-        supabase = _get_supabase()
-        supabase.table("payment_attempts").upsert(
-            {
-                "tx_id": tx_id,
-                "transaction_id": tx_id,
-                "telegram_id": telegram_id,
-                "plan_requested": plan_id,
-                "status": "APPROVED",
-                "source": "chapa_automated",
-                "created_at": _now(),
-            }
-        ).execute()
-
-        return True
-    except Exception as e:
-        logger.error(
-            "Failed to upgrade %s via Chapa: %s", safe_user_ref(telegram_id), e
-        )
-        return False
-
-
 def get_payment_attempt(tx_id: str) -> dict | None:
     try:
         supabase = _get_supabase()

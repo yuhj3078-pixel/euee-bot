@@ -20,7 +20,7 @@ from telegram import Update
 
 import payments
 import notes
-from config import ADMIN_TOKEN, WEBHOOK_SECRET, BASE_WEB_URL, TIER_PRICES, BOT_TOKEN, CHAPA_SECRET_KEY, validate_env
+from config import ADMIN_TOKEN, WEBHOOK_SECRET, BASE_WEB_URL, TIER_PRICES, BOT_TOKEN, validate_env
 
 import db_supabase as db
 
@@ -385,78 +385,6 @@ async def telegram_webhook(request: Request):
 
 # (duplicate route removed — root_health is defined above at /health and /)
 
-# ── Chapa Payment Webhook (Automated Real-Time Upgrade) ─────────────────────
-@app.post("/api/payments/chapa/callback")
-async def chapa_webhook(request: Request):
-    """
-    Chapa sends a POST request here when a payment is successful.
-    We verify the signature and upgrade the user instantly.
-    """
-    # 1. Verify Signature (Pass 4.6 Hardening)
-    signature = request.headers.get("x-chapa-signature")
-    body = await request.body()
-    
-    if not CHAPA_SECRET_KEY:
-        logger.error("CHAPA_SECRET_KEY missing - cannot verify webhook")
-        raise HTTPException(status_code=500)
-        
-    expected = hmac.new(CHAPA_SECRET_KEY.encode(), body, hashlib.sha256).hexdigest()
-    if not signature or not hmac.compare_digest(signature, expected):
-        logger.warning("Invalid Chapa signature received")
-        raise HTTPException(status_code=401, detail="Invalid signature")
-    
-    payload = await request.json()
-    status = payload.get("status")
-    tx_ref = payload.get("tx_ref")
-    
-    if status == "success" and tx_ref:
-        # tx_ref format: euee_{tier}_{telegram_id}_{random}
-        parts = tx_ref.split("_")
-        if len(parts) >= 3:
-            tier_req = parts[1]
-            telegram_id = int(parts[2])
-            
-            # Perform the upgrade
-            success = db.upgrade_user_chapa(telegram_id, tier_req, tx_ref)
-            if success:
-                logger.info(f"✅ Automated upgrade: User {telegram_id} to {tier_req} via Chapa")
-                # Notify the user via bot
-                bot = get_application()
-                lang = "en"
-                try:
-                    user_data = db.get_user(telegram_id)
-                    lang = user_data.get("language", "en")
-                except: pass
-                
-                msg = (
-                    f"🎉 **PAYMENT SUCCESSFUL!**\n\n"
-                    f"Your account has been upgraded to **{tier_req.upper()}** instantly.\n"
-                    f"Go to the menu to start using your new features! 🚀"
-                    if lang == "en" else
-                    f"🎉 **ክፍያዎ ተሳክቷል!**\n\n"
-                    f"አካውንትዎ ወዲያውኑ ወደ **{tier_req.upper()}** አድጓል።\n"
-                    f"አዲሶቹን አገልግሎቶች መጠቀም ለመጀመር ወደ ማውጫው ይሂዱ! 🚀"
-                )
-                try:
-                    await bot.bot.send_message(chat_id=telegram_id, text=msg, parse_mode="Markdown")
-                except Exception as e:
-                    logger.error(f"Failed to notify user {telegram_id}: {e}")
-                    
-    return {"status": "ok"}
-
-@app.get("/api/payments/verify/{tx_ref}")
-async def verify_payment_api(tx_ref: str):
-    """Manual sync endpoint for the bot to check status if webhook was delayed."""
-    res = await payments.verify_payment(tx_ref)
-    if res.get("verified"):
-        # Upgrade if not already done
-        parts = tx_ref.split("_")
-        if len(parts) >= 3:
-            tier_req = parts[1]
-            telegram_id = int(parts[2])
-            db.upgrade_user_chapa(telegram_id, tier_req, tx_ref)
-        return {"status": "success", "message": "Payment verified and account upgraded."}
-    return {"status": "pending", "message": "Payment not yet confirmed by Chapa."}
 
 
 # (Duplicate /health removed)
