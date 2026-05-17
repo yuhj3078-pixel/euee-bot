@@ -407,8 +407,15 @@ def build_app():
     # Add conversation handler FIRST so it can catch its entry points (like upgrade_)
     app.add_handler(conv)
     
-    # Group 0: High-priority global handlers (Admin, etc.)
-    app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=0)
+    # Group 1: Global button callbacks (admin approvals, textbook downloads)
+    # We use group=1 so they are processed independently and not swallowed by active user conversations in group=0.
+    app.add_handler(CallbackQueryHandler(_safe(button_callback)), group=1)
+    app.add_handler(
+        CallbackQueryHandler(
+            _safe(handle_textbook_download), pattern="^dl_textbook_.*$"
+        ),
+        group=1
+    )
     
     # Global catch-all should respond to user if nothing else matched
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _safe(start)))
@@ -427,11 +434,6 @@ def build_app():
             )
 
     app.add_handler(MessageHandler(filters.ALL, safe_log_messages), group=-1)
-    app.add_handler(
-        CallbackQueryHandler(
-            _safe(handle_textbook_download), pattern="^dl_textbook_.*$"
-        )
-    )
 
     # Global commands
     for cmd in [
