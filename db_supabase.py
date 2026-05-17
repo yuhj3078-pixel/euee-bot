@@ -698,6 +698,7 @@ def approve_payment(tx_id: str) -> bool:
                 "tier": tier,
                 "subscription_active": True,
                 "subscription_expires_at": expiry.isoformat(),
+                "tier_updated_at": _now(),
             },
         )
         if not success:

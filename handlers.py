@@ -1148,10 +1148,18 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         success = db.approve_payment(tx_id)
         if success:
             try:
-                await query.edit_message_caption(f"{query.message.caption or ''}\n\n✅ APPROVED by {query.from_user.first_name}")
+                await query.edit_message_caption(
+                    caption=f"{query.message.caption or ''}\n\n✅ APPROVED by {query.from_user.first_name}",
+                    parse_mode="HTML"
+                )
             except Exception:
-                try: await query.edit_message_text(f"✅ APPROVED by {query.from_user.first_name}\nTX: {tx_id}")
-                except: pass
+                try:
+                    await query.edit_message_text(
+                        text=f"✅ APPROVED by {query.from_user.first_name}\nTX: {tx_id}",
+                        parse_mode="HTML"
+                    )
+                except:
+                    pass
             
             student_id = attempt_data.get("telegram_id")
             raw_plan = str(attempt_data.get("plan_requested", "pro")).lower()
@@ -1179,10 +1187,17 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if db.reject_payment(tx_id):
             try:
                 if query.message and query.message.caption:
-                    await query.edit_message_caption(f"{query.message.caption}\n\n❌ REJECTED by {query.from_user.first_name}")
+                    await query.edit_message_caption(
+                        caption=f"{query.message.caption}\n\n❌ REJECTED by {query.from_user.first_name}",
+                        parse_mode="HTML"
+                    )
                 else:
-                    await query.edit_message_text(f"❌ REJECTED by {query.from_user.first_name}\nTX: {tx_id}")
-            except: pass
+                    await query.edit_message_text(
+                        text=f"❌ REJECTED by {query.from_user.first_name}\nTX: {tx_id}",
+                        parse_mode="HTML"
+                    )
+            except:
+                pass
         return
     user = db.get_user(query.from_user.id)
     if not user:
@@ -2352,36 +2367,41 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ADMIN_IDS:
         logger.error("[PAYMENT] ❌ No admin IDs configured! Payment notification will not be sent.")
     
+    import html
     for target_admin in ADMIN_IDS:
         if not target_admin or target_admin == 0:
             logger.warning(f"[PAYMENT] Skipping invalid admin ID: {target_admin}")
             continue
         try:
             admin_msg = (
-                f"🔔 **NEW UPGRADE REQUEST**\n\n"
-                f"👤 **Student:** {update.effective_user.first_name} (@{update.effective_user.username or 'N/A'})\n"
-                f"🆔 **Telegram ID:** `{update.effective_user.id}`\n"
-                f"💎 **Plan Requested:** {plan_label}\n"
-                f"🧾 **Reference ID:** `{tx_id}`\n\n"
+                f"🔔 <b>NEW UPGRADE REQUEST</b>\n\n"
+                f"👤 <b>Student:</b> {html.escape(update.effective_user.first_name)} (@{html.escape(update.effective_user.username or 'N/A')})\n"
+                f"🆔 <b>User Ref:</b> <code>{safe_user_ref(update.effective_user.id)}</code>\n"
+                f"💎 <b>Plan Requested:</b> {plan_label}\n"
+                f"🧾 <b>Reference ID:</b> <code>{tx_id}</code>\n\n"
                 f"✅ Tap Approve to upgrade this student instantly."
             )
-            admin_msg = admin_msg.replace(
-                str(update.effective_user.id),
-                safe_user_ref(update.effective_user.id),
-            )
-            admin_msg = admin_msg.replace("Telegram ID", "User Ref")
             logger.info(f"[PAYMENT] 📤 Sending photo notification to admin {target_admin}")
-            await ctx.bot.send_photo(
-                chat_id=target_admin,
-                photo=file_id,
-                caption=admin_msg,
-                parse_mode="Markdown",
-                reply_markup=kb.admin_approval_keyboard(tx_id),
-            )
-            logger.info(f"[PAYMENT] ✅ Successfully sent photo notification to admin {target_admin}")
+            if update.message.photo:
+                await ctx.bot.send_photo(
+                    chat_id=target_admin,
+                    photo=file_id,
+                    caption=admin_msg,
+                    parse_mode="HTML",
+                    reply_markup=kb.admin_approval_keyboard(tx_id),
+                )
+            else:
+                await ctx.bot.send_document(
+                    chat_id=target_admin,
+                    document=file_id,
+                    caption=admin_msg,
+                    parse_mode="HTML",
+                    reply_markup=kb.admin_approval_keyboard(tx_id),
+                )
+            logger.info(f"[PAYMENT] ✅ Successfully sent photo/document notification to admin {target_admin}")
         except Exception as e:
-            logger.exception(f"[PAYMENT] ❌ Failed to notify admin {target_admin} with photo: {e}")
-            # Try sending as text message if photo fails
+            logger.exception(f"[PAYMENT] ❌ Failed to notify admin {target_admin}: {e}")
+            # Try sending as text message if photo/document fails
             try:
                 logger.info(f"[PAYMENT] 📝 Attempting text fallback for admin {target_admin}")
                 await ctx.bot.send_message(
@@ -2627,20 +2647,19 @@ async def cmd_demo_upgrade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         screenshot_url="https://via.placeholder.com/150",
     )
     if ADMIN_ID:
+        import html
         admin_msg = (
-            f"🔔 **DEMO UPGRADE REQUEST**\n\n"
-            f"👤 **Student:** {user.first_name} (@{user.username or 'N/A'})\n"
-            f"🆔 **ID:** `{user.id}`\n"
-            f"💎 **Plan:** MAX\n"
-            f"🧾 **TX ID:** `{tx_id}`\n\n"
+            f"🔔 <b>DEMO UPGRADE REQUEST</b>\n\n"
+            f"👤 <b>Student:</b> {html.escape(user.first_name)} (@{html.escape(user.username or 'N/A')})\n"
+            f"🆔 <b>User Ref:</b> <code>{safe_user_ref(user.id)}</code>\n"
+            f"💎 <b>Plan:</b> MAX\n"
+            f"🧾 <b>TX ID:</b> <code>{tx_id}</code>\n\n"
             f"Click buttons below to test approval."
         )
-        admin_msg = admin_msg.replace(str(user.id), safe_user_ref(user.id))
-        admin_msg = admin_msg.replace("**ID:**", "**User Ref:**")
         await ctx.bot.send_message(
             chat_id=ADMIN_ID,
             text=admin_msg,
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=kb.admin_approval_keyboard(tx_id),
         )
         await update.message.reply_text(
