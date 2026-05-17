@@ -154,6 +154,8 @@ from config import (
     AWAITING_FEATURE_SUGGESTION,
     AWAITING_TELEBIRR_PHOTO,
     AWAITING_TELEBIRR_TX,
+    FREE_SUBJECTS,
+    TRIAL_SUBJECTS,
 )
 
 from payments import validate_telebirr_tx_id, is_valid_image
@@ -345,9 +347,9 @@ async def set_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     welcome = (
         "Language set to English.\n\n"
-        "I am Abebe, your EUEE study partner. Use the menu below to practice, revise, and track your progress."
+        "I am Study Bot, your EUEE study partner. Use the menu below to practice, revise, and track your progress."
         if lang == "en"
-        else "ቋንቋ አማርኛ ሆኗል።\n\nእኔ አቤቤ ነኝ፣ የEUEE የጥናት አጋርህ። ከታች ያለውን ምናሌ ተጠቀም።"
+        else "ቋንቋ አማርኛ ሆኗል።\n\nእኔ ስተዲ ቦት (Study Bot) ነኝ፣ የEUEE የጥናት አጋርህ። ከታች ያለውን ምናሌ ተጠቀም።"
     )
     await update.message.reply_text(welcome, reply_markup=kb.main_menu_keyboard(lang))
 
@@ -419,15 +421,13 @@ async def menu_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_SUBJECT
 
     if "Study Notes" in text or "ማስታወሻ" in text or "ማስታወቂያ" in text:
-        if not db.has_access(effective_tier, "notes"):
-            await update.message.reply_text("Study notes are for Pro and Max members.")
-            await cmd_upgrade(update, ctx)
-            return ConversationHandler.END
         ctx.user_data["notes_mode"] = "notes"
         ctx.user_data["awaiting_subject"] = True
-        await update.message.reply_text(
-            "Pick a subject for notes:", reply_markup=kb.subject_keyboard(lang)
+        msg = (
+            "Pick a subject for notes (Free trial includes English & Civics):"
+            if effective_tier == "free" else "Pick a subject for notes:"
         )
+        await update.message.reply_text(msg, reply_markup=kb.subject_keyboard(lang))
         return CHOOSE_SUBJECT
 
     if "Model Exam" in text or "ሞዴል ፈተና" in text:
@@ -444,17 +444,13 @@ async def menu_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_SUBJECT
 
     if "Audio" in text or "ኦዲዮ" in text:
-        if not db.has_access(effective_tier, "audio"):
-            await update.message.reply_text(
-                "Audio lessons are for Pro and Max members."
-            )
-            await cmd_upgrade(update, ctx)
-            return ConversationHandler.END
         ctx.user_data["notes_mode"] = "audio"
         ctx.user_data["awaiting_subject"] = True
-        await update.message.reply_text(
-            "Pick a subject for audio:", reply_markup=kb.subject_keyboard(lang)
+        msg = (
+            "Pick a subject for audio lessons (Free trial includes English & Civics):"
+            if effective_tier == "free" else "Pick a subject for audio:"
         )
+        await update.message.reply_text(msg, reply_markup=kb.subject_keyboard(lang))
         return CHOOSE_SUBJECT
 
     if "Flashcard" in text or "ፍላሽ" in text:
@@ -571,7 +567,8 @@ async def menu_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if "Random Challenge" in text or "የዘፈቀደ ጥያቄ" in text:
         import random
 
-        subject = random.choice(list(SUBJECTS.keys()))
+        subject_pool = FREE_SUBJECTS if effective_tier == "free" else list(SUBJECTS.keys())
+        subject = random.choice(subject_pool)
         db.update_user(update.effective_user.id, {"chosen_subject": subject})
         await ctx.bot.send_chat_action(
             chat_id=update.effective_chat.id, action=ChatAction.TYPING
@@ -607,7 +604,53 @@ async def choose_subject(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     user = db.get_user(update.effective_user.id)
     lang = user.get("language", "en") if user else "en"
+    effective_tier = _get_fresh_tier(update.effective_user.id)
     mode = ctx.user_data.get("notes_mode")
+
+    if effective_tier == "free":
+        # 1. Notes & Audio Trial limits (English & Civics only)
+        if mode in ("notes", "audio") and subject not in TRIAL_SUBJECTS:
+            if lang == "en":
+                await update.message.reply_text(
+                    f"🔒 *{_subject_name(subject)}* Study Notes & Audio are Premium-only!\n\n"
+                    "Free trial users can only access study notes and audio lessons for **English and Civics**.\n"
+                    "To unlock study notes and audio for all 11 subjects, please upgrade your plan! 🚀",
+                    parse_mode="Markdown"
+                )
+            else:
+                mode_name = "ማስታወሻ" if mode == "notes" else "ኦዲዮ"
+                await update.message.reply_text(
+                    f"🔒 *{_subject_name(subject)}* የ{mode_name} ትምህርት የፕሪሚየም ተጠቃሚዎች ብቻ ነው!\n\n"
+                    "በነፃ የሙከራ ስሪት ማግኘት የሚችሉት ለ**እንግሊዝኛ (English) እና ስነ-ዜጋ (Civics)** ብቻ ነው።\n"
+                    "ሁሉንም 11 ትምህርቶች ለመክፈት እባክዎ አካውንትዎን ያሳድጉ! 🚀",
+                    parse_mode="Markdown"
+                )
+            ctx.user_data["awaiting_subject"] = False
+            ctx.user_data.pop("notes_mode", None)
+            await cmd_plan(update, ctx)
+            return ConversationHandler.END
+
+        # 2. Practice & Mock Exam limits (Math, English & Civics only)
+        elif mode not in ("notes", "audio") and subject not in FREE_SUBJECTS:
+            if lang == "en":
+                await update.message.reply_text(
+                    f"🔒 *{_subject_name(subject)}* is a Premium Subject!\n\n"
+                    "Free tier users can only access practice and mock exams for **Mathematics, English, and Civics**.\n"
+                    "To unlock all 11 subjects, high-speed practice, AI study notes, audios, and battles, please upgrade your plan! 🚀",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(
+                    f"🔒 *{_subject_name(subject)}* የፕሪሚየም ትምህርት ነው!\n\n"
+                    "ነፃ ተማሪዎች ማለማመድ የሚችሉት **ሂሳብ (Mathematics)፣ እንግሊዝኛ (English) እና ስነ-ዜጋ (Civics)** ብቻ ነው።\n"
+                    "ሁሉንም 11 ትምህርቶች፣ ማስታወሻዎች፣ የኦዲዮ ትምህርቶች እና ውድድሮችን ለመክፈት እባክዎ አካውንትዎን ያሳድጉ! 🚀",
+                    parse_mode="Markdown"
+                )
+            ctx.user_data["awaiting_subject"] = False
+            ctx.user_data.pop("notes_mode", None)
+            await cmd_plan(update, ctx)
+            return ConversationHandler.END
+
     db.update_user(update.effective_user.id, {"chosen_subject": subject})
     ctx.user_data["awaiting_subject"] = False
     ctx.user_data["notes_mode"] = None
@@ -1182,7 +1225,7 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 await ctx.bot.send_audio(
                     chat_id=query.from_user.id,
                     audio=audio_file,
-                    title="Abebe's Voice",
+                    title="Study Bot's Voice",
                     caption="🔊 Here is the audio explanation.",
                 )
             if os.path.exists(audio_path):
@@ -1274,17 +1317,17 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         # Subject-specific strategy tips
         strategies = {
-            "math": "💡 **Abebe's Math Strategy:** For EUEE Calculus questions, try 'Plugging and Chugging'—test the options in the equation to see which one works! It's often faster than solving from scratch.",
-            "physics": "💡 **Abebe's Physics Strategy:** Always check your units! If the question asks for Force and an option is in Joules, you can eliminate it immediately.",
-            "biology": "💡 **Abebe's Biology Strategy:** Focus on the 'Biomolecules' and 'Cell Biology' chapters. They make up a huge percentage of the EUEE.",
-            "chemistry": "💡 **Abebe's Chemistry Strategy:** Master the Periodic Table trends (Electronegativity, Ionization Energy). These are guaranteed points.",
-            "english": "💡 **Abebe's English Strategy:** For 'Jumbled Sentences', look for pronouns like 'This', 'He', or 'They'—they usually refer to something in a previous sentence.",
-            "civics": "💡 **Abebe's Civics Strategy:** Focus on the 'Human Rights' and 'Constitution' chapters. Know the difference between Democratic and Human rights.",
+            "math": "💡 **Study Bot's Math Strategy:** For EUEE Calculus questions, try 'Plugging and Chugging'—test the options in the equation to see which one works! It's often faster than solving from scratch.",
+            "physics": "💡 **Study Bot's Physics Strategy:** Always check your units! If the question asks for Force and an option is in Joules, you can eliminate it immediately.",
+            "biology": "💡 **Study Bot's Biology Strategy:** Focus on the 'Biomolecules' and 'Cell Biology' chapters. They make up a huge percentage of the EUEE.",
+            "chemistry": "💡 **Study Bot's Chemistry Strategy:** Master the Periodic Table trends (Electronegativity, Ionization Energy). These are guaranteed points.",
+            "english": "💡 **Study Bot's English Strategy:** For 'Jumbled Sentences', look for pronouns like 'This', 'He', or 'They'—they usually refer to something in a previous sentence.",
+            "civics": "💡 **Study Bot's Civics Strategy:** Focus on the 'Human Rights' and 'Constitution' chapters. Know the difference between Democratic and Human rights.",
         }
 
         am_strategies = {
-            "math": "💡 **የአቤቤ የሂሳብ ስልት:** ለካሊኩለስ ጥያቄዎች አማራጮችን በሒሳብ ቀመሩ ውስጥ በመተካት ይሞክሩ (Plugging and Chugging)! ይህም ከባዶ ከመስራት ይልቅ ፈጣን ነው።",
-            "physics": "💡 **የአቤቤ የፊዚክስ ስልት:** ሁልጊዜ ዩኒቶችን (Units) ያረጋግጡ! ኃይል (Force) ተጠይቆ ምርጫው በጁልስ (Joules) ከሆነ ወዲያውኑ ውድቅ ያድርጉት።",
+            "math": "💡 **የስተዲ ቦት የሂሳብ ስልት:** ለካሊኩለስ ጥያቄዎች አማራጮችን በሒሳብ ቀመሩ ውስጥ በመተካት ይሞክሩ (Plugging and Chugging)! ይህም ከባዶ ከመስራት ይልቅ ፈጣን ነው።",
+            "physics": "💡 **የስተዲ ቦት የፊዚክስ ስልት:** ሁልጊዜ ዩኒቶችን (Units) ያረጋግጡ! ኃይል (Force) ተጠይቆ ምርጫው በጁልስ (Joules) ከሆነ ወዲያውኑ ውድቅ ያድርጉት።",
         }
 
         if lang == "en":
@@ -1607,7 +1650,7 @@ async def cmd_review_sheet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pdf_path = await run_blocking(
         generate_personalized_review_pdf,
         update.effective_user.id,
-        user.get("name", "Student"),
+        user.get("name") or "Student",
         wrong_qs,
         lang,
     )
@@ -2046,10 +2089,12 @@ async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         if tier == "free":
             msg += (
-                "- 5 Daily Practice Questions\n"
+                "- 5 Daily Practice Questions (Math, English, & Civics)\n"
+                "- Trial Study Notes (English & Civics)\n"
+                "- Trial Audio Lessons (English & Civics)\n"
                 "- Public Leaderboard\n"
                 "- Community Confessions\n\n"
-                "🚀 Upgrade to **Pro** or **Max** for unlimited questions and study materials!"
+                "🚀 Upgrade to **Pro** or **Max** to unlock all 11 subjects and premium study materials!"
             )
         elif tier == "pro":
             msg += (
@@ -2083,10 +2128,12 @@ async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         if tier == "free":
             msg += (
-                "- በቀን 5 የልምምድ ጥያቄዎች\n"
+                "- በቀን 5 የልምምድ ጥያቄዎች (ሂሳብ፣ እንግሊዝኛ እና ስነ-ዜጋ)\n"
+                "- ነፃ የሙከራ ማስታወሻዎች (እንግሊዝኛ እና ስነ-ዜጋ)\n"
+                "- ነፃ የሙከራ ኦዲዮ ትምህርቶች (እንግሊዝኛ እና ስነ-ዜጋ)\n"
                 "- የደረጃ ሰንጠረዥ\n"
                 "- የምስጢር ሳጥን\n\n"
-                "🚀 ወደ **Pro** ወይም **Max** በማሳደግ ገደብ የለሽ ጥያቄዎችን እና ትምህርቶችን ያግኙ!"
+                "🚀 ወደ **Pro** ወይም **Max** በማሳደግ ሁሉንም 11 ትምህርቶች እና ጥቅሞች ያግኙ!"
             )
         elif tier == "pro":
             msg += (
@@ -2377,7 +2424,7 @@ async def handle_suggestion(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         # Store suggestion in database
         db.save_feature_suggestion(
             telegram_id=update.effective_user.id,
-            username=user.get("name", "Anonymous"),
+            username=user.get("name") or "Anonymous",
             suggestion=suggestion,
             language=user.get("language", "en"),
         )
@@ -2406,7 +2453,7 @@ async def handle_suggestion(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if ADMIN_IDS:
             admin_msg = (
                 f"💡 **New Feature Suggestion**\n\n"
-                f"👤 From: {user.get('name', 'Anonymous')} ({update.effective_user.id})\n"
+                f"👤 From: {user.get('name') or 'Anonymous'} ({update.effective_user.id})\n"
                 f"💭 Suggestion: {suggestion}\n"
                 f"🌐 Language: {lang}"
             )
@@ -2533,17 +2580,17 @@ async def cmd_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     share_url = f"https://t.me/share/url?url={invite_link}&text="
 
     if lang == "en":
-        share_text = "Hey! I'm using Abebe to study for my EUEE exams. It's awesome! Join me here: "
+        share_text = "Hey! I'm using Study Bot to study for my EUEE exams. It's awesome! Join me here: "
         msg = (
-            "🤝 **Invite your friends to study with Abebe!**\n\n"
+            "🤝 **Invite your friends to study with Study Bot!**\n\n"
             "Sharing is caring. Help your classmates succeed too.\n\n"
             f"Your personal invite link:\n`{invite_link}`"
         )
         share_btn_text = "📲 Share with Friends"
     else:
-        share_text = "ሰላም! ለኢዩኢዩ (EUEE) ፈተና በአቤቤ እየተጠቀምኩ ነው። በጣም ምርጥ ነው! አንተም ተቀላቀለኝ፡ "
+        share_text = "ሰላም! ለኢዩኢዩ (EUEE) ፈተና በስተዲ ቦት (Study Bot) እየተጠቀምኩ ነው። በጣም ምርጥ ነው! አንተም ተቀላቀለኝ፡ "
         msg = (
-            "🤝 **ጓደኞችዎን ከአቤቤ ጋር እንዲያጠኑ ይጋብዙ!**\n\n"
+            "🤝 **ጓደኞችዎን ከስተዲ ቦት (Study Bot) ጋር እንዲያጠኑ ይጋብዙ!**\n\n"
             "ማካፈል ደግነት ነው። የክፍል ጓደኞችዎ እንዲሳካላቸው ይርዱ።\n\n"
             f"የእርስዎ የግል መጋበዣ ሊንክ፡\n`{invite_link}`"
         )
@@ -2725,7 +2772,7 @@ async def cmd_manual_upgrade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if new_tier == tier:
         await update.message.reply_text(
             f"✅ **Success!**\n\n"
-            f"👤 User `{target_id}` ({user.get('name', 'N/A')})\n"
+            f"👤 User `{target_id}` ({user.get('name') or 'N/A'})\n"
             f"📈 Tier: `{old_tier}` → `{tier}`\n"
             f"📅 Expires: {expires_at.strftime('%B %d, %Y') if tier != 'free' else 'N/A'}",
             parse_mode="Markdown",

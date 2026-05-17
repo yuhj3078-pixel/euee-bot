@@ -553,6 +553,9 @@ class CollectionRef:
         supabase = _get_supabase()
         return supabase.table(self.name).insert(data).execute()
 
+    def document(self, doc_id=None):
+        return DocumentRef(self.name, doc_id)
+
     def where(self, field, op, value):
         if op != "==":
             raise NotImplementedError(f"Unsupported where operator: {op}")
@@ -595,6 +598,29 @@ class DocumentSnapshot:
 
     def to_dict(self):
         return self._data
+
+
+class DocumentRef:
+    def __init__(self, collection, doc_id=None):
+        self.collection = collection
+        self.id_val = doc_id
+        self.id_field = _collection_order_column(collection) or "id"
+
+    def set(self, data):
+        supabase = _get_supabase()
+        if self.id_val is not None:
+            data[self.id_field] = self.id_val
+            resp = supabase.table(self.collection).upsert(data).execute()
+        else:
+            resp = supabase.table(self.collection).insert(data).execute()
+        return resp
+
+    def update(self, data):
+        supabase = _get_supabase()
+        if self.id_val is None:
+            raise ValueError("Cannot update document without an ID")
+        resp = supabase.table(self.collection).update(data).eq(self.id_field, self.id_val).execute()
+        return resp
 
 
 class DocumentDB:

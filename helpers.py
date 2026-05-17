@@ -122,10 +122,10 @@ def format_leaderboard(entries: list[dict], lang: str = "en") -> str:
 
     for i, entry in enumerate(entries[:10]):
         medal = medals[i] if i < len(medals) else f"#{i+1}"
-        name = entry.get("name", "Student")[:15]
-        correct = entry.get("correct_total", 0)
-        streak = entry.get("streak", 0)
-        badges = " ".join(entry.get("badges", [])[:3])
+        name = (entry.get("name") or "Student")[:15]
+        correct = entry.get("correct_total") or 0
+        streak = entry.get("streak") or 0
+        badges = " ".join((entry.get("badges") or [])[:3])
         lines.append(f"{medal} {name} — ✅{correct} | 🔥{streak}d {badges}")
 
     lines.append("")
@@ -135,17 +135,17 @@ def format_leaderboard(entries: list[dict], lang: str = "en") -> str:
 
 def format_progress(user: dict, lang: str = "en") -> str:
     """Format student progress summary."""
-    name = user.get("name", "Student")
-    streak = user.get("streak", 0)
-    correct = user.get("correct_total", 0)
-    wrong = user.get("wrong_total", 0)
+    name = user.get("name") or "Student"
+    streak = user.get("streak") or 0
+    correct = user.get("correct_total") or 0
+    wrong = user.get("wrong_total") or 0
     total = correct + wrong
     pct = round(correct / total * 100, 1) if total > 0 else 0
-    exams = user.get("exams_taken", 0)
-    tier = user.get("tier", "free").upper()
-    freezes = user.get("streak_freezes", 0)
-    badges = " ".join(user.get("badges", [])) or "None yet"
-    study_hrs = round(user.get("study_minutes_total", 0) / 60, 1)
+    exams = user.get("exams_taken") or 0
+    tier = (user.get("tier") or "free").upper()
+    freezes = user.get("streak_freezes") or 0
+    badges = " ".join(user.get("badges") or []) or "None yet"
+    study_hrs = round((user.get("study_minutes_total") or 0) / 60, 1)
 
     countdown = format_countdown(lang)
 

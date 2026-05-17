@@ -135,7 +135,7 @@ async def daily_reminder(app):
         countdown = format_countdown(lang)
         if lang == "en":
             msg = (
-                f"🌅 Good morning, {user.get('name', 'Student')}!\n\n"
+                f"🌅 Good morning, {user.get('name') or 'Student'}!\n\n"
                 f"🔥 Streak: {streak} days — don't break it!\n"
                 f"{countdown}\n\n"
                 f'💡 Voice of the Topper:\n"{tip}"\n\n'
@@ -143,7 +143,7 @@ async def daily_reminder(app):
             )
         else:
             msg = (
-                f"🌅 እንደምን አደርክ {user.get('name', 'ተማሪ')}!\n\n"
+                f"🌅 እንደምን አደርክ {user.get('name') or 'ተማሪ'}!\n\n"
                 f"🔥 ስትሪክ: {streak} ቀን — አታቋርጥ!\n"
                 f"{countdown}\n\n"
                 f'💡 ከምርጥ ተማሪ:\n"{tip}"\n\n'
@@ -155,12 +155,12 @@ async def daily_reminder(app):
             panic_msg = (
                 "\n\n🚨 PANIC MODE ACTIVATED 🚨\n"
                 "EUEE is in less than 7 days!\n"
-                "Abebe is sending you 3 reminders today!\n"
+                "Study Bot is sending you 3 reminders today!\n"
                 "Use /start → Practice to study NOW!"
                 if lang == "en"
                 else "\n\n🚨 ድንጋጤ ሁነታ 🚨\n"
                 "EUEE 7 ቀን ቀረ!\n"
-                "አቤቤ ዛሬ 3 ጊዜ ያስታውስሃል!\n"
+                "ስተዲ ቦት (Study Bot) ዛሬ 3 ጊዜ ያስታውስሃል!\n"
                 "/start ጫን!"
             )
             msg += panic_msg
@@ -187,7 +187,7 @@ async def weekly_parent_report(app):
         token = user.get("parent_token")
         if not token:
             continue
-        name = user.get("name", "Student")
+        name = user.get("name") or "Student"
         try:
             # FIX: Wrap sync AI call in run_blocking so the scheduler never blocks.
             report = await run_blocking(ai.generate_parent_shock_report, user, name)

@@ -475,7 +475,7 @@ async def admin_overview():
             if len(recent_users) < 50:
                 recent_users.append({
                     "telegram_id": d.get("telegram_id"),
-                    "name": d.get("name", "Unknown"),
+                    "name": d.get("name") or "Unknown",
                     "tier": d.get("tier", "free"),
                     "joined": str(d.get("joined_at", d.get("joined", "")))
                 })
@@ -660,7 +660,7 @@ async def parent_dashboard(request: Request, token: str):
 
     context = {
         "request": request,
-        "name": user.get("name", "Student"),
+        "name": user.get("name") or "Student",
         "streak": user.get("streak", 0),
         "questions_total": user.get("questions_total", 0),
         "tier": user.get("tier", "free"),
