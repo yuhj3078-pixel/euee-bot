@@ -2307,30 +2307,22 @@ async def handle_telebirr_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         file_id = update.message.document.file_id
 
-    if existing_tx_id:
-        # Update the already-pending record with the screenshot
-        db.update_payment_attempt(existing_tx_id, {"screenshot_url": file_id})
-        tx_id = existing_tx_id
-        saved = True
-    elif pending_manual_tx_id:
+    # Determine target tx_id
+    if pending_manual_tx_id:
         tx_id = pending_manual_tx_id
-        saved = db.save_payment_attempt(
-            telegram_id=update.effective_user.id,
-            username=update.effective_user.first_name or "",
-            tx_id=tx_id,
-            plan_requested=tier,
-            screenshot_url=file_id,
-        )
+    elif existing_tx_id:
+        tx_id = existing_tx_id
     else:
-        # New submission (came from /upgrade → photo without handle_upgrade_button path)
         tx_id = _generate_private_reference("MAN")
-        saved = db.save_payment_attempt(
-            telegram_id=update.effective_user.id,
-            username=update.effective_user.first_name or "",
-            tx_id=tx_id,
-            plan_requested=tier,
-            screenshot_url=file_id,
-        )
+
+    # Always save a new payment attempt record in the database
+    saved = db.save_payment_attempt(
+        telegram_id=update.effective_user.id,
+        username=update.effective_user.first_name or "",
+        tx_id=tx_id,
+        plan_requested=tier,
+        screenshot_url=file_id,
+    )
 
     if not saved:
         await update.message.reply_text(
@@ -2718,7 +2710,7 @@ async def cmd_test_admin_notify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Failed to send test to {admin_id}: {e}")
 
 
-async def cmd_manual_upgrade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def cmd_manualupgrade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Admin command: /manualupgrade <telegram_id> <tier> [days]
     Example: /manualupgrade 123456789 max 365
     Directly sets a user's tier without going through the payment flow.

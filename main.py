@@ -61,7 +61,7 @@ from handlers import (
     cmd_id,
     cmd_demo_upgrade,
     cmd_admin,
-    cmd_manual_upgrade,
+    cmd_manualupgrade,
     handle_upgrade_button,
     cmd_upgrade,
     cmd_admin_build,
@@ -363,8 +363,15 @@ def build_app():
             ],
             AWAITING_TELEBIRR_TX: [
                 MessageHandler(
+                    filters.PHOTO | filters.Document.IMAGE,
+                    _guard(handle_telebirr_photo),
+                ),
+                MessageHandler(
                     filters.TEXT & ~filters.COMMAND, _guard(handle_telebirr_tx)
-                )
+                ),
+                CallbackQueryHandler(
+                    _safe(handle_upgrade_button), pattern="^upgrade_"
+                ),
             ],
             AWAITING_TELEBIRR_PHOTO: [
                 MessageHandler(
